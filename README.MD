@@ -40,7 +40,7 @@ A plataforma abrangerá:
 - **Coleta, Armazenamento e Análise de Dados de Consumo.**
 - **Visualização dos Dados:** Dashboards interativos.
 - **Módulo de Inteligência Artificial:** Análises preditivas e geração de relatórios.
-- **Sistema de Alertas e Notificações:** Envio de alertas via aplicativo ou e-mail.
+- **Sistema de Alertas e Notificações:** Envio de alertas via e-mail.
 - **Interface Web Responsiva:** Acesso otimizado para diversos dispositivos.
 
 ---
