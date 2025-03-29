@@ -1,9 +1,9 @@
-<h1>[RFC] Plataforma de Controle de Consumo de Energia Elétrica com IoT e IA<h1>
+<h1>[RFC] Plataforma de Controle de Consumo de Energia Elétrica com IoT e IA</h1>
 Pedro Henrique Dias da Costa
 Engenharia de Software
 [dd/mm/yyyy]
 
-<h3>Resumo<h3>
+<h3>Resumo</h3>
 Este documento apresenta a proposta para o desenvolvimento de uma plataforma de controle de consumo de energia elétrica em residências, utilizando tomadas inteligentes para monitoramento em tempo real. A aplicação oferecerá dashboards interativos para visualização e projeção de gastos e consumo, além de integrar um módulo de inteligência artificial para análises preditivas e recomendações personalizadas.
 Contexto:
 O consumo de energia elétrica tem crescido significativamente, e a falta de monitoramento detalhado pode resultar em desperdício e custos elevados para os usuários. Soluções existentes muitas vezes não oferecem uma visão integrada dos dados ou não utilizam tecnologias modernas para análises e automação, limitando o potencial de economia e otimização.
