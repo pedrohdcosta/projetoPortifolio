@@ -1,0 +1,38 @@
+@startuml
+title Diagrama de Casos de Uso - Plataforma IoT de Consumo de Energia
+
+actor "Usuário Residencial" as Usuario
+actor "Administrador" as Admin
+actor "Dispositivo IoT" as Dispositivo
+
+rectangle "Plataforma de Monitoramento de Energia" {
+  
+  (Cadastrar/Login) as UC01
+  (Gerenciar Dispositivos) as UC02
+  (Visualizar Dashboard) as UC03
+  (Visualizar Telemetria em Tempo Real) as UC04
+  (Visualizar Histórico de Consumo) as UC05
+  (Receber Alertas de Consumo) as UC06
+  (Receber Recomendações da IA) as UC07
+  (Ligar/Desligar Tomadas) as UC08
+  (Gerar Relatórios de Consumo) as UC09
+  (Gerenciar Usuários) as UC10
+
+  Usuario --> UC01
+  Usuario --> UC02
+  Usuario --> UC03
+  Usuario --> UC04
+  Usuario --> UC05
+  Usuario --> UC06
+  Usuario --> UC07
+  Usuario --> UC08
+  Usuario --> UC09
+
+  Admin --> UC10
+  
+  Dispositivo --> (Enviar Dados MQTT)
+  (Enviar Dados MQTT) .up.> UC04 : <<include>>
+  (Enviar Dados MQTT) .up.> UC05 : <<include>>
+}
+
+@enduml

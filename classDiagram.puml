@@ -1,0 +1,60 @@
+@startuml class
+title Diagrama de Classes - Plataforma IoT de Consumo de Energia
+
+class Usuario {
+  - id: UUID
+  - nome: string
+  - email: string
+  - senha: string
+  + autenticar(): boolean
+}
+
+class Dispositivo {
+  - id: UUID
+  - nome: string
+  - status: string
+  - localizacao: string
+  - usuarioId: UUID
+  + ligar()
+  + desligar()
+}
+
+class LeituraEnergia {
+  - id: UUID
+  - dispositivoId: UUID
+  - timestamp: datetime
+  - tensao: float
+  - corrente: float
+  - potencia: float
+}
+
+class PrevisaoIA {
+  - id: UUID
+  - usuarioId: UUID
+  - dataReferencia: date
+  - consumoPrevisto: float
+  - recomendacoes: string
+  + gerarPrevisao()
+}
+
+class AlertaConsumo {
+  - id: UUID
+  - usuarioId: UUID
+  - limite: float
+  - foiDisparado: boolean
+  + verificarConsumoAtual()
+}
+
+class Dashboard {
+  + exibirLeituras()
+  + exibirGraficoHistorico()
+  + exibirPrevisoes()
+}
+
+Usuario "1" -- "N" Dispositivo : possui >
+Dispositivo "1" -- "N" LeituraEnergia : gera >
+Usuario "1" -- "N" PrevisaoIA : recebe >
+Usuario "1" -- "N" AlertaConsumo : configura >
+Usuario "1" -- "1" Dashboard : acessa >
+
+@enduml
