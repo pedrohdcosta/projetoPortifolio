@@ -1,0 +1,22 @@
+' SEQUÊNCIA  (sequence_diagram.puml)
+@startuml
+participant "Dispositivo" as D
+participant "Broker MQTT" as B
+participant "API REST" as R
+participant "Backend Go" as S
+participant "TimescaleDB" as DB
+participant "PWA" as F
+
+alt Comunicação MQTT
+  D -> B: PUBLISH power.json
+  S -> B: SUBSCRIBE topic
+  B -> S: power.json
+end
+alt Comunicação REST
+  S -> R: GET /v1/telemetry
+  R --> S: 200 JSON
+end
+S -> DB: INSERT leitura
+F -> S: GET /consumo/realtime
+S --> F: JSON stream
+@enduml

@@ -1,0 +1,42 @@
+@startuml
+left to right direction
+actor Usuario
+package "Plataforma Energia IoT" {
+  [Frontend PWA] as Web
+  [Backend Go] as API
+}
+cloud "Broker MQTT" as MQ
+cloud "API REST Dispositivo" as REST
+database TimescaleDB
+
+Usuario --> Web : HTTPS\nDashboard + Comandos
+Web --> API : JSON/HTTPS
+API --> MQ : SUB/PUB
+API --> REST : GET Telemetry
+API --> TimescaleDB : SQL
+@enduml
+
+
+' --------------------------------------
+' C4 – CONTÊINER  (c4_container.puml)
+@startuml
+!includeurl https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+LAYOUT_TOP_DOWN()
+
+System_Boundary(sys, "Plataforma Energia IoT") {
+  Container(web, "Frontend PWA", "Vue 3", "Dashboard + Controle")
+  Container(api, "Backend Go", "Gin", "API REST + Workers MQTT/REST")
+  ContainerDb(ts, "TimescaleDB", "DB", "Séries temporais")
+  Container(redis, "Redis", "Cache", "Sessões e métricas recentes")
+}
+
+System_Ext(mqtt, "Broker MQTT (EMQX)")
+System_Ext(rest, "API REST Dispositivo")
+
+Rel(user, web, "HTTPS")
+Rel(web, api, "JSON / HTTPS")
+Rel(api, ts, "JDBC")
+Rel(api, redis, "TCP")
+Rel(api, mqtt, "MQTT SUB/PUB")
+Rel(api, rest, "HTTP-GET")
+@enduml

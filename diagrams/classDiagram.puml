@@ -1,0 +1,45 @@
+' CLASSES  (class_diagram.puml)
+@startuml
+class Usuario {
+  +id: UUID
+  +email: string
+  +senhaHash: string
+}
+
+class Dispositivo {
+  +id: UUID
+  +nome: string
+  +tipoConexao: enum<MQTT,REST>
+  +tokenAPI: string
+}
+
+class LeituraEnergia {
+  +timestamp: datetime
+  +potencia: float
+  +tensao: float
+  +corrente: float
+}
+
+class AlertaConsumo {
+  +limite: float
+  +ativo: bool
+}
+
+class ApiDeviceAdapter {
+  +capturarLeitura()
+  +enviarComando()
+}
+
+class MqttService {
+  +subscribe()
+  +publish()
+}
+
+Usuario "1" -- "0..*" Dispositivo
+Dispositivo "1" -- "0..*" LeituraEnergia
+Dispositivo "1" -- "0..*" AlertaConsumo
+
+ApiDeviceAdapter ..> Dispositivo
+MqttService ..> Dispositivo
+@enduml
+

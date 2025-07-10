@@ -1,0 +1,31 @@
+' CASOS DE USO  (use_cases.puml)
+@startuml
+left to right direction
+actor "Usuário" as U
+actor "Administrador" as A
+actor "Dispositivo" as D
+
+rectangle Sistema {
+  (Cadastro/Login) as CU1
+  (Gerenciar Dispositivos) as CU2
+  (Enviar Dados MQTT) as CU3
+  (Enviar Dados REST) as CU4
+  (Visualizar Consumo) as CU5
+  (Definir Limites) as CU6
+  (Receber Alerta) as CU7
+  (Controle Liga/Desliga) as CU8
+  (Emitir Relatório PDF) as CU9
+}
+
+U --> CU1
+A --> CU1
+A --> CU2
+D --> CU3
+D --> CU4
+U --> CU2
+U --> CU5
+U --> CU6
+U --> CU7
+U --> CU8
+U --> CU9
+@enduml
