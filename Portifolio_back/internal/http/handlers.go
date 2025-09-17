@@ -10,13 +10,13 @@ func (s *Server) listTodos(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) createTodo(w http.ResponseWriter, r *http.Request) {
-	var in todo.todo
+	var in todo.Todo
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
 	if in.Title == "" {
-		writeJSON(w, http.StatusBadRequest, map[strin]string{"error": "title is required"})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "title is required"})
 		return
 	}
 }
