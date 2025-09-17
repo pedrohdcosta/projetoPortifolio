@@ -19,4 +19,6 @@ func (s *Server) createTodo(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "title is required"})
 		return
 	}
+	out := s.store.Create(in.Title)
+	writeJSON(w, http.StatusCreated, out)
 }
