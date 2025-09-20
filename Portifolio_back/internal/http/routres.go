@@ -1,4 +1,4 @@
-package http
+package apihttp
 
 import (
 	"encoding/json"
@@ -13,7 +13,7 @@ type Server struct {
 }
 
 func NewRouter() *Server {
-	store := todo.MemoryStore()
+	store := todo.NewMemoryStore()
 	mux := http.NewServeMux()
 
 	s := &Server{store: store, mux: mux}
@@ -28,7 +28,7 @@ func NewRouter() *Server {
 	return s
 }
 
-func (s *Server) ServeHttp(w http.ResponseWriter, r *http.Request) { s.mux.ServeHTTP(w, r) }
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.mux.ServeHTTP(w, r) }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Content-Type", "application/json")

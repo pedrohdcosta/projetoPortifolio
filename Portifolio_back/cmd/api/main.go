@@ -15,7 +15,7 @@ import (
 func main() {
 	srv := &http.Server{
 		Addr:    ":8080",
-		Handler: http.NewRouter(),
+		Handler: apihttp.NewRouter(),
 	}
 	go func() {
 		log.Println("HTTP server listening on :8080")
