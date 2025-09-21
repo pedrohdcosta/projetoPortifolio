@@ -5,33 +5,51 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/signal"
-	"syscall"
-	"time"
 
-	"github.com/pedrohdcosta/projetoPortifolio/Portifolio_back/internal/http"
+	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/pedrohdcosta/projetoPortifolio/Portifolio_back/internal/auth"
+	"github.com/pedrohdcosta/projetoPortifolio/Portifolio_back/internal/db"
 )
 
 func main() {
-	srv := &http.Server{
-		Addr:    ":8080",
-		Handler: apihttp.NewRouter(),
+	ctx := context.Background()
+	pool, err := db.NewPool(ctx)
+	if err != nil {
+		log.Fatal(err)
 	}
-	go func() {
-		log.Println("HTTP server listening on :8080")
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("server error: %v", err)
-		}
-	}()
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-	<-stop
+	r := gin.Default()
+	// migração mínima
+	ensureSchema(ctx, pool)
+	// rotas de auth
+	auth.RegisterRoutes(r, wrap(pool))
+	port := os.Getenv("APP_PORT")
+	if port == "" {
+		port = "8080"
+	}
+	log.Println("listening on :" + port)
+	log.Fatal(http.ListenAndServe(":"+port, r))
+}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	log.Println("shutting down...")
-	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatalf("Graceful shutdown failed: %v", err)
-	}
-	log.Println("bye!")
+type pgxWrap struct{ *pgxpool.Pool }
+
+func wrap(p *pgxpool.Pool) pgxWrap { return pgxWrap{p} }
+func (w pgxWrap) Exec(ctx context.Context, sql string, args ...any) error {
+	_, err := w.Pool.Exec(ctx, sql, args...)
+	return err
+}
+func (w pgxWrap) QueryRow(ctx context.Context, sql string, args ...any) dbRow {
+	return w.Pool.QueryRow(ctx, sql, args...)
+}
+
+type dbRow interface{ Scan(dest ...any) error }
+
+func ensureSchema(ctx context.Context, p *pgxpool.Pool) {
+	_, _ = p.Exec(ctx, `create table if not exists app_user(
+	id bigserial primary key,
+	name text not null,
+	email text unique not null,
+	password_hash text not null,
+	created_at timestamptz default now()
+	)`)
 }
