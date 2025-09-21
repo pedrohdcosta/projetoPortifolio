@@ -13,10 +13,8 @@ type repoPG struct{ q querier }
 
 type querier interface {
 	Exec(ctx context.Context, sql string, args ...any) error
-	QueryRow(ctx context.Context, sql string, args ...any) row
+	QueryRow(ctx context.Context, sql string, args ...any) interface{ Scan(dest ...any) error }
 }
-
-type row interface{ Scan(dest ...any) error }
 
 func (r *repoPG) CreateUser(ctx context.Context, name, email, passHash string) (int64, error) {
 	sql := `insert into app_user(name,email,password_hash) values($1,$2,$3) returning id`

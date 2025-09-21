@@ -38,11 +38,9 @@ func (w pgxWrap) Exec(ctx context.Context, sql string, args ...any) error {
 	_, err := w.Pool.Exec(ctx, sql, args...)
 	return err
 }
-func (w pgxWrap) QueryRow(ctx context.Context, sql string, args ...any) dbRow {
+func (w pgxWrap) QueryRow(ctx context.Context, sql string, args ...any) interface{ Scan(dest ...any) error } {
 	return w.Pool.QueryRow(ctx, sql, args...)
 }
-
-type dbRow interface{ Scan(dest ...any) error }
 
 func ensureSchema(ctx context.Context, p *pgxpool.Pool) {
 	_, _ = p.Exec(ctx, `create table if not exists app_user(
