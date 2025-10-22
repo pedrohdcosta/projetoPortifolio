@@ -8,17 +8,31 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/joho/godotenv"
 	"github.com/pedrohdcosta/projetoPortifolio/Portifolio_back/internal/auth"
 	"github.com/pedrohdcosta/projetoPortifolio/Portifolio_back/internal/db"
 )
 
 func main() {
+	_ = godotenv.Load(".env")
 	ctx := context.Background()
 	pool, err := db.NewPool(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
 	r := gin.Default()
+
+	r.Use(gin.Logger(), gin.Recovery())
+
+	// health rápido
+	r.GET("/health", func(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) })
+
+	// loga o que vier errado
+	r.NoRoute(func(c *gin.Context) {
+		log.Printf("NoRoute %s %s", c.Request.Method, c.Request.URL.Path)
+		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+	})
+
 	// migração mínima
 	ensureSchema(ctx, pool)
 	// rotas de auth

@@ -8,7 +8,7 @@ import { useAuth } from '../stores/auth'
 
 const routes = [
     {path: '/login', component: Login},
-    {path: 'register', component: Register},
+    {path: '/register', component: Register},
     {path: '/', redirect: '/app/dashboard'},
     {
         path: '/app',

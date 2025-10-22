@@ -1,71 +1,60 @@
 <template>
-  <div class="p">
-    <h2>Dashboard</h2>
-    <div class="cards">
-      <div class="card">
-        <h3>Potência Atual</h3>
-        <p>{{ currentPower.toFixed(1) }} W</p>
+  <div class="grid" style="padding:16px">
+    <h2 class="row" style="justify-content:space-between">
+      <span>Dashboard</span>
+      <span class="badge">tempo real (mock)</span>
+    </h2>
+
+
+    <section class="grid" style="grid-template-columns: repeat(auto-fit, minmax(220px,1fr));">
+      <div class="card" style="padding:16px">
+        <h3 class="text-muted small">Potência Atual</h3>
+        <div style="font-size:1.6rem;font-weight:700">{{ currentPower.toFixed(1) }} W</div>
       </div>
-      <div class="card">
-        <h3>Consumo Estimado/h</h3>
-        <p>{{ (currentPower / 1000).toFixed(3) }} kWh</p>
+      <div class="card" style="padding:16px">
+        <h3 class="text-muted small">Consumo Estimado/h</h3>
+        <div style="font-size:1.6rem;font-weight:700">{{ (currentPower / 1000).toFixed(3) }} kWh</div>
       </div>
-    </div>
-    <div>
-      <h3>Últimos 5 minutos</h3>
+      <div class="card" style="padding:16px">
+        <h3 class="text-muted small">Dispositivos Ativos</h3>
+        <div style="font-size:1.6rem;font-weight:700">{{ activeDevices }}</div>
+      </div>
+    </section>
+
+
+    <section class="card" style="padding:16px">
+      <h3 class="text-muted small">Últimos 5 minutos</h3>
       <ul class="series">
         <li v-for="(p, i) in series" :key="i">{{ p.toFixed(1) }}</li>
       </ul>
-      <small>(lista simples para o MVP; troca por gráfico depois)</small>
-    </div>
+      <p class="text-muted small">(lista simples no MVP; substitua por gráfico depois)</p>
+    </section>
   </div>
 </template>
-
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from "vue";
-const series = ref<number[]>([]);
-const currentPower = ref(120);
-let t: number | undefined;
-
-onMounted(() => {
-  t = window.setInterval(() => {
-    const noise = (Math.random() - 0.5) * 10;
-    currentPower.value = Math.max(50, currentPower.value + noise);
-    series.value.push(currentPower.value);
-    if (series.value.length > 300) series.value.shift();
-  }, 1000);
-});
-
-onUnmounted(() => {
-  if (t) clearInterval(t);
-});
+import { onMounted, onUnmounted, ref } from 'vue'
+const series = ref<number[]>([])
+const currentPower = ref(120)
+const activeDevices = 3
+let t: number | undefined
+onMounted(() => { t = window.setInterval(() => { const noise = (Math.random() - 0.5) * 10; currentPower.value = Math.max(50, currentPower.value + noise); series.value.push(currentPower.value); if (series.value.length > 300) series.value.shift() }, 1000) })
+onUnmounted(() => { if (t) clearInterval(t) })
 </script>
-<style>
-.p {
-  padding: 16px;
-}
-.cards {
-  display: flex;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-.card {
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 12px;
-  min-width: 180px;
-}
+<style scoped>
 .series {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   gap: 8px;
   list-style: none;
   padding: 0;
+  margin: 12px 0 0
 }
+
 .series li {
-  background: #f3f4f6;
-  padding: 6px;
-  border-radius: 6px;
-  text-align: center;
+  background: #0f1731;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  text-align: center
 }
 </style>
