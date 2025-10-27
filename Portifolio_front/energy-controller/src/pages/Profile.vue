@@ -1,51 +1,106 @@
 <template>
-  <div class="grid" style="padding:16px">
-    <h2>Perfil</h2>
+  <div class="container">
+    <div class="col" style="gap: var(--sp-6)">
+      <!-- Cabeçalho -->
+      <header class="row" style="justify-content: space-between;">
+        <h2 style="font-size: var(--fs-xl); font-weight: 700;">Perfil</h2>
+        <span class="badge">MVP</span>
+      </header>
 
-
-    <section class="card" style="padding:16px;display:grid;gap:12px">
-      <div class="row" style="align-items:center;gap:12px">
-        <div class="avatar">{{ initials }}</div>
-        <div>
-          <div style="font-weight:700">{{ auth.user?.name || 'Usuário' }}</div>
-          <div class="text-muted small">{{ auth.user?.email }}</div>
+      <!-- Card principal -->
+      <section class="card" style="padding: var(--sp-5); display: grid; gap: var(--sp-4);">
+        <!-- Info principal -->
+        <div class="row" style="align-items: center; gap: var(--sp-3);">
+          <div class="avatar">{{ initials }}</div>
+          <div class="col" style="gap: 6px;">
+            <strong style="font-size: var(--fs-lg);">
+              {{ auth.user?.name || 'Usuário' }}
+            </strong>
+            <div class="row" style="align-items: center; gap: var(--sp-2);">
+              <span class="text-muted small">{{ auth.user?.email || '—' }}</span>
+              <button
+                v-if="auth.user?.email"
+                class="btn btn--outline btn-xs"
+                @click="copyEmail"
+                aria-label="Copiar e-mail"
+              >
+                Copiar
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
 
+        <div class="hr" />
 
-      <div class="hr" />
-      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
-        <div class="card" style="padding:12px">
-          <div class="text-muted small">Função</div>
-          <div>user</div>
+        <!-- Apenas uma info extra genérica -->
+        <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--sp-3);">
+          <article class="card" style="padding: var(--sp-4); text-align: center;">
+            <div class="text-muted small">Tipo de Conta</div>
+            <div>Usuário padrão</div>
+          </article>
         </div>
-        <div class="card" style="padding:12px">
-          <div class="text-muted small">Conta criada</div>
-          <div>—</div>
+
+        <!-- Ações -->
+        <div class="row" style="justify-content: flex-end; gap: var(--sp-3);">
+          <button class="btn btn--outline" @click="refresh" :disabled="loading">
+            {{ loading ? 'Atualizando…' : 'Atualizar dados' }}
+          </button>
         </div>
-      </div>
-    </section>
+      </section>
+
+      <!-- Loading -->
+      <section v-if="!auth.user && loading" class="card" style="padding: var(--sp-5);">
+        <p class="text-muted small">Carregando informações do usuário…</p>
+      </section>
+    </div>
   </div>
 </template>
+
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useAuth } from '../stores/auth'
+
 const auth = useAuth()
-onMounted(() => { if (!auth.user) auth.fetchMe() })
-const initials = computed(() => {
-  const n = auth.user?.name || 'U I';
-  return n.split(' ').map(x => x[0]).slice(0, 2).join('').toUpperCase()
+const loading = ref(false)
+
+onMounted(async () => {
+  if (!auth.user) {
+    loading.value = true
+    try { await auth.fetchMe() } finally { loading.value = false }
+  }
 })
+
+const initials = computed(() => {
+  const n = (auth.user?.name || 'U I').trim()
+  return n.split(/\s+/).map(x => x[0]).slice(0, 2).join('').toUpperCase()
+})
+
+function copyEmail() {
+  if (!auth.user?.email) return
+  navigator.clipboard.writeText(auth.user.email).catch(() => {})
+}
+
+async function refresh() {
+  loading.value = true
+  try { await auth.fetchMe() } finally { loading.value = false }
+}
 </script>
+
 <style scoped>
 .avatar {
-  width: 48px;
-  height: 48px;
+  width: 56px;
+  height: 56px;
   border-radius: 12px;
   background: #0f1731;
   border: 1px solid var(--border);
   display: grid;
   place-items: center;
-  font-weight: 700
+  font-weight: 700;
+}
+
+.btn-xs {
+  padding: 6px 10px;
+  font-size: var(--fs-sm);
+  border-radius: 8px;
 }
 </style>
