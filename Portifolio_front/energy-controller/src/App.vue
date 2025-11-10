@@ -1,5 +1,6 @@
 <template>
   <div class="app">
+    <!-- Header aparece só quando autenticado -->
     <header class="top card" v-if="isAuth">
       <div class="row">
         <div class="logo-dot" />
@@ -12,8 +13,9 @@
       </div>
     </header>
 
-    <div class="layout">
-      <aside class="side card" v-if="isAuth">
+    <!-- Layout autenticado: sidebar + conteúdo -->
+    <div v-if="isAuth" class="layout">
+      <aside class="side card">
         <RouterLink to="/app/dashboard" class="nav" active-class="active">📊 Dashboard</RouterLink>
         <RouterLink to="/app/devices"  class="nav" active-class="active">🔌 Dispositivos</RouterLink>
         <RouterLink to="/app/profile"  class="nav" active-class="active">👤 Perfil</RouterLink>
@@ -23,6 +25,11 @@
         <RouterView />
       </main>
     </div>
+
+    <!-- Layout não-autenticado: viewport livre para centralizar Login/Register -->
+    <main v-else class="auth-viewport">
+      <RouterView />
+    </main>
   </div>
 </template>
 
@@ -32,7 +39,7 @@ import { computed } from 'vue'
 import { useAuth } from './stores/auth'
 
 const auth = useAuth()
-const isAuth = computed(() => auth.isAuthenticated) // ✅ mantém reatividade
+const isAuth = computed(() => auth.isAuthenticated)
 function logout() { auth.logout() }
 </script>
 
@@ -44,13 +51,8 @@ function logout() { auth.logout() }
   --gap-md: 16px;
 }
 
-/* NUNCA limite a largura da casca do app */
-.app {
-  width: 100%;
-  max-width: none;       /* <-- remove qualquer limite */
-  margin: 0;             /* margem é da header/layout */
-  padding: 0;            /* padding fica no layout */
-}
+/* Casca do app: não limite largura aqui */
+.app { width: 100%; }
 
 /* ===== Header sticky centrado ===== */
 .top {
@@ -77,14 +79,14 @@ function logout() { auth.logout() }
   box-shadow: 0 4px 14px rgba(76, 175, 80, .35);
 }
 
-/* ===== Shell com sidebar ===== */
+/* ===== Layout autenticado (sidebar + conteúdo) ===== */
 .layout {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
   gap: var(--gap-lg);
   padding: 0 var(--gap-lg) var(--gap-lg);
-  max-width: 1440px;     /* controla a largura útil */
-  margin: 0 auto;        /* centraliza */
+  max-width: 1440px;
+  margin: 0 auto;
 }
 @media (min-width: 1600px) {
   .layout { max-width: 1600px; }
@@ -99,7 +101,7 @@ function logout() { auth.logout() }
   overscroll-behavior: contain;
 }
 
-/* ===== Navegação ===== */
+/* Navegação */
 .nav {
   display: block;
   padding: 10px 12px;
@@ -109,16 +111,21 @@ function logout() { auth.logout() }
   outline: none;
 }
 .nav:hover { background: #0f1731; }
-.active {
-  background: #0f1731;
-  border: 1px solid var(--border);
-}
+.active { background: #0f1731; border: 1px solid var(--border); }
 .nav:focus-visible { box-shadow: 0 0 0 3px rgba(25,118,210,.28); }
 
-/* ===== Conteúdo ===== */
+/* Conteúdo */
 .content {
   min-height: calc(100dvh - (var(--header-h) + 48px));
   min-width: 0;
+}
+
+/* ===== Layout não-autenticado (Login/Register centralizados) ===== */
+.auth-viewport {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;         /* centraliza o conteúdo do RouterView */
+  padding: var(--gap-lg);
 }
 
 /* ===== Responsivo ===== */

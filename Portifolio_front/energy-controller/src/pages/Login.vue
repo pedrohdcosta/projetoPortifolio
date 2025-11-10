@@ -99,11 +99,6 @@ async function onSubmit() {
   display: grid;
   place-items: center;
   padding: var(--sp-6);
-  background:
-    radial-gradient(60% 40% at 10% 10%, rgba(67, 160, 71, 0.12), transparent 60%),
-    radial-gradient(40% 30% at 90% 20%, rgba(25, 118, 210, 0.12), transparent 60%),
-    linear-gradient(var(--bg), var(--bg)) fixed;
-  color: var(--text);
 }
 
 /* Card aproveita .card do tema (vidro, sombra, raio) e só define largura/padding */
