@@ -1,10 +1,26 @@
 <template>
   <div class="container">
     <div class="grid" style="gap: var(--sp-6)">
-      <!-- Título + badge -->
-      <header class="row" style="justify-content: space-between;">
-        <h2 style="font-size: var(--fs-xl); font-weight: 700;">Dashboard</h2>
-        <span class="badge">tempo real (mock)</span>
+      <!-- Título + badge + seletor de dispositivo -->
+      <header class="row" style="justify-content: space-between; align-items: center;">
+        <div>
+          <h2 style="font-size: var(--fs-xl); font-weight: 700;">Dashboard</h2>
+        </div>
+        <div class="row" style="gap: var(--sp-3); align-items: center;">
+          <label for="device-select" style="font-size: var(--fs-sm);">Dispositivo:</label>
+          <select 
+            id="device-select" 
+            v-model="selectedDeviceId" 
+            @change="onDeviceChange"
+            style="padding: var(--sp-2); border-radius: 4px; border: 1px solid #e5e7eb;"
+          >
+            <option :value="null">Selecione um dispositivo</option>
+            <option v-for="device in devices" :key="device.id" :value="device.id">
+              {{ device.name }} ({{ device.room }})
+            </option>
+          </select>
+          <span class="badge">tempo real</span>
+        </div>
       </header>
 
       <!-- KPIs -->
@@ -26,25 +42,24 @@
         <article class="card stat stat--3">
           <div class="col">
             <h3 class="text-muted small">Dispositivos Ativos</h3>
-            <strong style="font-size: var(--fs-2xl);">{{ activeDevices }}</strong>
+            <strong style="font-size: var(--fs-2xl);">{{ devices.length }}</strong>
           </div>
         </article>
       </section>
 
-      <!-- Últimos 5 minutos -->
+      <!-- Gráfico de Consumo -->
       <section class="card" style="padding: var(--sp-5);">
         <div class="row" style="justify-content: space-between; margin-bottom: var(--sp-3);">
-          <h3 class="text-muted small">Últimos 5 minutos</h3>
-          <button class="btn btn--outline">Exportar</button>
+          <h3 class="text-muted small">Gráfico de Consumo</h3>
         </div>
-
-        <div class="chip-grid">
-          <span v-for="(p, i) in series" :key="i" class="chip">{{ p.toFixed(1) }}</span>
+        <div style="height: 300px;">
+          <ConsumptionChart :labels="chartLabels" :series="series" />
         </div>
+      </section>
 
-        <p class="text-muted small" style="margin-top: var(--sp-3);">
-          (MVP com lista; substitua por gráfico depois)
-        </p>
+      <!-- Tabela de Telemetria -->
+      <section class="card" style="padding: var(--sp-5);">
+        <TelemetryTable :data="telemetryData" @refresh="handleRefresh" />
       </section>
     </div>
   </div>
@@ -52,24 +67,141 @@
 
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, computed } from 'vue'
+import ConsumptionChart from '../components/ConsumptionChart.vue'
+import TelemetryTable from '../components/TelemetryTable.vue'
+import type { TelemetryRow } from '../components/TelemetryTable.vue'
+import { listDevices, type Device } from '../api/devices'
+import { fetchTelemetry } from '../api/telemetry'
 
+// State
+const devices = ref<Device[]>([])
+const selectedDeviceId = ref<number | null>(null)
 const series = ref<number[]>([])
 const currentPower = ref(120)
-const activeDevices = 3
+const telemetryData = ref<TelemetryRow[]>([])
+const chartLabels = ref<string[]>([])
 
+// Computed
 const estimatedKwh = computed(() => (currentPower.value / 1000).toFixed(3))
 
-let t: number | undefined
-onMounted(() => {
-  t = window.setInterval(() => {
-    const noise = (Math.random() - 0.5) * 10
-    currentPower.value = Math.max(50, currentPower.value + noise)
-    series.value.push(currentPower.value)
-    // mantém ~5 min se 1 amostra/s => 300 pontos
-    if (series.value.length > 300) series.value.shift()
+// Timers
+let pollingTimer: number | undefined
+
+// Methods
+async function loadDevices() {
+  try {
+    devices.value = await listDevices()
+  } catch (error) {
+    console.error('Error loading devices:', error)
+    // If API fails, use mock data
+    devices.value = [
+      { id: 1, name: 'Ar Condicionado', room: 'Sala' },
+      { id: 2, name: 'Geladeira', room: 'Cozinha' },
+      { id: 3, name: 'Computador', room: 'Escritório' }
+    ]
+  }
+}
+
+async function loadTelemetry() {
+  if (!selectedDeviceId.value) return
+
+  try {
+    const data = await fetchTelemetry({ 
+      device_id: selectedDeviceId.value,
+      limit: 100
+    })
+    
+    telemetryData.value = data
+    
+    // Update chart data
+    if (data.length > 0) {
+      series.value = data.map(d => d.power_w)
+      chartLabels.value = data.map(d => {
+        const date = new Date(d.time)
+        return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}:${date.getSeconds().toString().padStart(2, '0')}`
+      })
+      currentPower.value = data[data.length - 1]?.power_w || 120
+    }
+  } catch (error) {
+    console.error('Error loading telemetry:', error)
+    // If API fails, use mock data
+    generateMockData()
+  }
+}
+
+function generateMockData() {
+  // Generate mock telemetry data
+  const now = new Date()
+  const mockData: TelemetryRow[] = []
+  
+  for (let i = 0; i < 30; i++) {
+    const time = new Date(now.getTime() - (29 - i) * 1000)
+    const power = 100 + Math.random() * 50
+    mockData.push({
+      time: time.toISOString(),
+      power_w: parseFloat(power.toFixed(2)),
+      voltage: parseFloat((220 + Math.random() * 10).toFixed(2)),
+      current: parseFloat((power / 220).toFixed(2))
+    })
+  }
+  
+  telemetryData.value = mockData
+  series.value = mockData.map(d => d.power_w)
+  chartLabels.value = mockData.map(d => {
+    const date = new Date(d.time)
+    return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}:${date.getSeconds().toString().padStart(2, '0')}`
+  })
+  currentPower.value = mockData[mockData.length - 1]?.power_w || 120
+}
+
+function startPolling() {
+  // Stop previous polling if any
+  stopPolling()
+  
+  // Start polling every 1 second
+  pollingTimer = window.setInterval(() => {
+    loadTelemetry()
   }, 1000)
+}
+
+function stopPolling() {
+  if (pollingTimer) {
+    clearInterval(pollingTimer)
+    pollingTimer = undefined
+  }
+}
+
+function onDeviceChange() {
+  if (selectedDeviceId.value) {
+    loadTelemetry()
+    startPolling()
+  } else {
+    stopPolling()
+    telemetryData.value = []
+    series.value = []
+    chartLabels.value = []
+  }
+}
+
+function handleRefresh() {
+  loadTelemetry()
+}
+
+// Lifecycle
+onMounted(async () => {
+  await loadDevices()
+  
+  // Auto-select first device if available
+  if (devices.value.length > 0) {
+    selectedDeviceId.value = devices.value[0].id
+    await loadTelemetry()
+    startPolling()
+  }
 })
-onUnmounted(() => { if (t) clearInterval(t) })
+
+onUnmounted(() => {
+  stopPolling()
+})
 </script>
 
 <style scoped>
