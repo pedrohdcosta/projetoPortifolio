@@ -85,7 +85,8 @@ async function onSubmit() {
     await auth.login(email.value, password.value)
     router.push('/app/dashboard')
   } catch (e: any) {
-    error.value = e?.response?.data?.error || 'Falha no cadastro.'
+    error.value = e?.response?.data?.error || 
+      'Falha no cadastro. Verifique os dados e tente novamente.'
   } finally {
     loading.value = false
   }

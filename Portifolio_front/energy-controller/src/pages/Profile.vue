@@ -7,8 +7,19 @@
         <span class="badge">MVP</span>
       </header>
 
+      <!-- Error State -->
+      <div v-if="error" class="error-card card">
+        <p class="error-message">{{ error }}</p>
+        <button class="btn btn--solid" @click="refresh">Tentar novamente</button>
+      </div>
+
+      <!-- Loading -->
+      <section v-if="!auth.user && loading" class="card" style="padding: var(--sp-5);">
+        <SkeletonCard />
+      </section>
+
       <!-- Card principal -->
-      <section class="card" style="padding: var(--sp-5); display: grid; gap: var(--sp-4);">
+      <section v-else class="card" style="padding: var(--sp-5); display: grid; gap: var(--sp-4);">
         <!-- Info principal -->
         <div class="row" style="align-items: center; gap: var(--sp-3);">
           <div class="avatar">{{ initials }}</div>
@@ -43,14 +54,10 @@
         <!-- Ações -->
         <div class="row" style="justify-content: flex-end; gap: var(--sp-3);">
           <button class="btn btn--outline" @click="refresh" :disabled="loading">
-            {{ loading ? 'Atualizando…' : 'Atualizar dados' }}
+            <span v-if="!loading">Atualizar dados</span>
+            <LoadingSpinner v-else small />
           </button>
         </div>
-      </section>
-
-      <!-- Loading -->
-      <section v-if="!auth.user && loading" class="card" style="padding: var(--sp-5);">
-        <p class="text-muted small">Carregando informações do usuário…</p>
       </section>
     </div>
   </div>
@@ -59,14 +66,25 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useAuth } from '../stores/auth'
+import SkeletonCard from '../components/SkeletonCard.vue'
+import LoadingSpinner from '../components/LoadingSpinner.vue'
 
 const auth = useAuth()
 const loading = ref(false)
+const error = ref('')
 
 onMounted(async () => {
   if (!auth.user) {
     loading.value = true
-    try { await auth.fetchMe() } finally { loading.value = false }
+    error.value = ''
+    try { 
+      await auth.fetchMe() 
+    } catch (e: any) {
+      error.value = e?.response?.data?.error || 
+        'Erro ao carregar dados do usuário. Verifique sua conexão e tente novamente.'
+    } finally { 
+      loading.value = false 
+    }
   }
 })
 
@@ -82,7 +100,15 @@ function copyEmail() {
 
 async function refresh() {
   loading.value = true
-  try { await auth.fetchMe() } finally { loading.value = false }
+  error.value = ''
+  try { 
+    await auth.fetchMe() 
+  } catch (e: any) {
+    error.value = e?.response?.data?.error || 
+      'Erro ao atualizar dados do usuário. Verifique sua conexão e tente novamente.'
+  } finally { 
+    loading.value = false 
+  }
 }
 </script>
 
@@ -102,5 +128,21 @@ async function refresh() {
   padding: 6px 10px;
   font-size: var(--fs-sm);
   border-radius: 8px;
+}
+
+.error-card {
+  padding: var(--sp-5, 20px);
+  background: rgba(255, 99, 132, 0.1);
+  border: 1px solid rgba(255, 99, 132, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3, 12px);
+  align-items: center;
+}
+
+.error-message {
+  color: var(--warn, #ff6384);
+  margin: 0;
+  text-align: center;
 }
 </style>

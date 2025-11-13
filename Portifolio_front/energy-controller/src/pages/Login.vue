@@ -85,7 +85,7 @@ async function onSubmit() {
   } catch (e: any) {
     error.value =
       e?.response?.data?.error ||
-      'Falha no login. Verifique e-mail/senha e tente novamente.'
+      'Falha no login. Verifique seu e-mail e senha e tente novamente.'
   } finally {
     loading.value = false
   }

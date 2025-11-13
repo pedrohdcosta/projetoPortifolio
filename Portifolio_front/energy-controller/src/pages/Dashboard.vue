@@ -7,8 +7,24 @@
         <span class="badge">tempo real (mock)</span>
       </header>
 
+      <!-- Error States -->
+      <div v-if="errorDevices" class="error-card card">
+        <p class="error-message">{{ errorDevices }}</p>
+        <button class="btn btn--solid" @click="loadDevices">Tentar novamente</button>
+      </div>
+
+      <div v-if="errorTelemetry" class="error-card card">
+        <p class="error-message">{{ errorTelemetry }}</p>
+        <button class="btn btn--solid" @click="loadTelemetry">Tentar novamente</button>
+      </div>
+
       <!-- KPIs -->
-      <section class="stat-grid">
+      <section v-if="loadingDevices" class="stat-grid">
+        <SkeletonCard />
+        <SkeletonCard />
+        <SkeletonCard />
+      </section>
+      <section v-else class="stat-grid">
         <article class="card stat stat--1">
           <div class="col">
             <h3 class="text-muted small">Potência Atual</h3>
@@ -31,47 +47,172 @@
         </article>
       </section>
 
-      <!-- Últimos 5 minutos -->
-      <section class="card" style="padding: var(--sp-5);">
-        <div class="row" style="justify-content: space-between; margin-bottom: var(--sp-3);">
-          <h3 class="text-muted small">Últimos 5 minutos</h3>
-          <button class="btn btn--outline">Exportar</button>
-        </div>
+      <!-- Telemetry Chart -->
+      <ConsumptionChart 
+        :labels="labels" 
+        :series="series" 
+        :loading="loadingTelemetry"
+        title="Consumo - Últimos 5 minutos"
+      />
 
-        <div class="chip-grid">
-          <span v-for="(p, i) in series" :key="i" class="chip">{{ p.toFixed(1) }}</span>
-        </div>
-
-        <p class="text-muted small" style="margin-top: var(--sp-3);">
-          (MVP com lista; substitua por gráfico depois)
-        </p>
-      </section>
+      <!-- Telemetry Table -->
+      <TelemetryTable 
+        :data="telemetryData" 
+        :loading="loadingTelemetry"
+        @refresh="loadTelemetry"
+      />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, computed } from 'vue'
+import SkeletonCard from '../components/SkeletonCard.vue'
+import ConsumptionChart from '../components/ConsumptionChart.vue'
+import TelemetryTable, { type TelemetryData } from '../components/TelemetryTable.vue'
+// Uncomment when API is ready:
+// import api from '../api/axios'
 
 const series = ref<number[]>([])
+const labels = ref<string[]>([])
 const currentPower = ref(120)
 const activeDevices = 3
 
+const telemetryData = ref<TelemetryData[]>([])
+const loadingDevices = ref(false)
+const loadingTelemetry = ref(false)
+const errorDevices = ref('')
+const errorTelemetry = ref('')
+
 const estimatedKwh = computed(() => (currentPower.value / 1000).toFixed(3))
 
-let t: number | undefined
-onMounted(() => {
-  t = window.setInterval(() => {
+let pollingTimer: number | undefined
+let isPolling = false
+
+async function loadDevices() {
+  // Prevent parallel requests
+  if (loadingDevices.value) return
+  
+  loadingDevices.value = true
+  errorDevices.value = ''
+  
+  try {
+    // Simulate API call
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    // const { data } = await api.get('/devices')
+    // Process device data here
+  } catch (e: any) {
+    errorDevices.value = e?.response?.data?.error || 
+      'Erro ao carregar dispositivos. Verifique sua conexão e tente novamente.'
+  } finally {
+    loadingDevices.value = false
+  }
+}
+
+async function loadTelemetry() {
+  // Prevent parallel requests during polling
+  if (loadingTelemetry.value) return
+  
+  loadingTelemetry.value = true
+  errorTelemetry.value = ''
+  
+  try {
+    // Simulate API call
+    await new Promise(resolve => setTimeout(resolve, 800))
+    // const { data } = await api.get('/telemetry')
+    
+    // Mock data for demonstration
     const noise = (Math.random() - 0.5) * 10
     currentPower.value = Math.max(50, currentPower.value + noise)
     series.value.push(currentPower.value)
-    // mantém ~5 min se 1 amostra/s => 300 pontos
-    if (series.value.length > 300) series.value.shift()
-  }, 1000)
+    labels.value.push(new Date().toLocaleTimeString('pt-BR'))
+    
+    // Keep last 300 points (~5 min at 1 sample/sec)
+    if (series.value.length > 300) {
+      series.value.shift()
+      labels.value.shift()
+    }
+    
+    // Update telemetry table
+    telemetryData.value = [
+      {
+        id: 1,
+        deviceName: 'Ar Condicionado',
+        power: currentPower.value * 0.6,
+        timestamp: new Date().toISOString()
+      },
+      {
+        id: 2,
+        deviceName: 'Geladeira',
+        power: currentPower.value * 0.3,
+        timestamp: new Date().toISOString()
+      },
+      {
+        id: 3,
+        deviceName: 'Iluminação',
+        power: currentPower.value * 0.1,
+        timestamp: new Date().toISOString()
+      }
+    ]
+  } catch (e: any) {
+    errorTelemetry.value = e?.response?.data?.error || 
+      'Erro ao carregar dados de telemetria. Verifique sua conexão e tente novamente.'
+  } finally {
+    loadingTelemetry.value = false
+  }
+}
+
+function startPolling() {
+  if (isPolling) return
+  isPolling = true
+  
+  pollingTimer = window.setInterval(() => {
+    // Only poll if not currently loading (avoid parallel requests)
+    if (!loadingTelemetry.value) {
+      loadTelemetry()
+    }
+  }, 2000) // Poll every 2 seconds
+}
+
+function stopPolling() {
+  isPolling = false
+  if (pollingTimer) {
+    clearInterval(pollingTimer)
+    pollingTimer = undefined
+  }
+}
+
+onMounted(async () => {
+  // Initial load
+  await Promise.all([
+    loadDevices(),
+    loadTelemetry()
+  ])
+  
+  // Start polling for telemetry updates
+  startPolling()
 })
-onUnmounted(() => { if (t) clearInterval(t) })
+
+onUnmounted(() => {
+  stopPolling()
+})
 </script>
 
 <style scoped>
 /* sem estilos extras: usamos theme.css (stat-grid, chip-grid, card, etc.) */
+.error-card {
+  padding: var(--sp-5, 20px);
+  background: rgba(255, 99, 132, 0.1);
+  border: 1px solid rgba(255, 99, 132, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3, 12px);
+  align-items: center;
+}
+
+.error-message {
+  color: var(--warn, #ff6384);
+  margin: 0;
+  text-align: center;
+}
 </style>
