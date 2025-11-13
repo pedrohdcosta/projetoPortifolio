@@ -54,4 +54,4 @@ COPY --from=frontend-builder /app/frontend/dist ./static
 EXPOSE 8080
 
 # Run the application
-CMD ["./master"]
+CMD ["./main"]
