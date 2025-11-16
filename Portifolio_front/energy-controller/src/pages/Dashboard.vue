@@ -4,8 +4,38 @@
       <!-- Título + badge -->
       <header class="row" style="justify-content: space-between;">
         <h2 style="font-size: var(--fs-xl); font-weight: 700;">Dashboard</h2>
-        <span class="badge">tempo real (mock)</span>
+        <span class="badge">tempo real</span>
       </header>
+
+      <!-- Error banner -->
+      <div v-if="errorDevices || errorTelemetry" class="error-banner">
+        <div class="error-content">
+          <span class="error-icon">⚠️</span>
+          <div>
+            <strong>Erro ao carregar dados</strong>
+            <p>{{ errorDevices || errorTelemetry }}</p>
+          </div>
+        </div>
+        <button class="btn btn--outline" @click="retryFetch">
+          Tentar novamente
+        </button>
+      </div>
+
+      <!-- Device selector -->
+      <section class="card" style="padding: var(--sp-4);">
+        <label for="device-select" class="form-label">Selecionar Dispositivo</label>
+        <select 
+          id="device-select"
+          v-model="selectedDeviceId" 
+          class="form-select"
+          :disabled="loadingDevices"
+        >
+          <option :value="null">Selecione um dispositivo...</option>
+          <option v-for="device in devices" :key="device.id" :value="device.id">
+            {{ device.name }} ({{ device.status }})
+          </option>
+        </select>
+      </section>
 
       <!-- KPIs -->
       <section class="stat-grid">
@@ -31,47 +61,205 @@
         </article>
       </section>
 
-      <!-- Últimos 5 minutos -->
+      <!-- Consumption Chart -->
       <section class="card" style="padding: var(--sp-5);">
         <div class="row" style="justify-content: space-between; margin-bottom: var(--sp-3);">
-          <h3 class="text-muted small">Últimos 5 minutos</h3>
-          <button class="btn btn--outline">Exportar</button>
+          <h3 class="text-muted small">Consumo ao Longo do Tempo</h3>
         </div>
+        <ConsumptionChart :data="chartData" :loading="loadingTelemetry" />
+      </section>
 
-        <div class="chip-grid">
-          <span v-for="(p, i) in series" :key="i" class="chip">{{ p.toFixed(1) }}</span>
-        </div>
-
-        <p class="text-muted small" style="margin-top: var(--sp-3);">
-          (MVP com lista; substitua por gráfico depois)
-        </p>
+      <!-- Telemetry Table -->
+      <section class="card" style="padding: var(--sp-5);">
+        <TelemetryTable 
+          :data="telemetryData" 
+          :loading="loadingTelemetry"
+          @refresh="handleRefresh"
+        />
       </section>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, computed } from 'vue'
+import { onMounted, onUnmounted, ref, computed, watch } from 'vue'
+import { listDevices, fetchTelemetry, type Device, type TelemetryData } from '../api/devices'
+import ConsumptionChart from '../components/ConsumptionChart.vue'
+import TelemetryTable from '../components/TelemetryTable.vue'
 
-const series = ref<number[]>([])
-const currentPower = ref(120)
-const activeDevices = 3
+// State
+const devices = ref<Device[]>([])
+const selectedDeviceId = ref<number | null>(null)
+const telemetryData = ref<TelemetryData[]>([])
+
+// Loading states
+const loadingDevices = ref(false)
+const loadingTelemetry = ref(false)
+
+// Error states
+const errorDevices = ref<string | null>(null)
+const errorTelemetry = ref<string | null>(null)
+
+// Computed
+const currentPower = computed(() => {
+  if (telemetryData.value.length > 0) {
+    return telemetryData.value[telemetryData.value.length - 1].power
+  }
+  return 0
+})
 
 const estimatedKwh = computed(() => (currentPower.value / 1000).toFixed(3))
 
-let t: number | undefined
-onMounted(() => {
-  t = window.setInterval(() => {
-    const noise = (Math.random() - 0.5) * 10
-    currentPower.value = Math.max(50, currentPower.value + noise)
-    series.value.push(currentPower.value)
-    // mantém ~5 min se 1 amostra/s => 300 pontos
-    if (series.value.length > 300) series.value.shift()
+const activeDevices = computed(() => 
+  devices.value.filter(d => d.status === 'online').length
+)
+
+const chartData = computed(() => 
+  telemetryData.value.map(d => ({
+    timestamp: d.timestamp,
+    power: d.power,
+  }))
+)
+
+// Functions
+async function loadDevices() {
+  if (loadingDevices.value) return
+  
+  loadingDevices.value = true
+  errorDevices.value = null
+  
+  try {
+    devices.value = await listDevices()
+    // Auto-select first device if available
+    if (devices.value.length > 0 && !selectedDeviceId.value) {
+      selectedDeviceId.value = devices.value[0].id
+    }
+  } catch (err: any) {
+    errorDevices.value = err.response?.data?.error || err.message || 'Erro ao carregar dispositivos'
+    console.error('Error loading devices:', err)
+  } finally {
+    loadingDevices.value = false
+  }
+}
+
+async function loadTelemetry() {
+  if (!selectedDeviceId.value) {
+    telemetryData.value = []
+    return
+  }
+  
+  // Prevent concurrent requests
+  if (loadingTelemetry.value) return
+  
+  loadingTelemetry.value = true
+  errorTelemetry.value = null
+  
+  try {
+    telemetryData.value = await fetchTelemetry(selectedDeviceId.value)
+  } catch (err: any) {
+    errorTelemetry.value = err.response?.data?.error || err.message || 'Erro ao carregar telemetria'
+    console.error('Error loading telemetry:', err)
+  } finally {
+    loadingTelemetry.value = false
+  }
+}
+
+function handleRefresh() {
+  loadTelemetry()
+}
+
+function retryFetch() {
+  errorDevices.value = null
+  errorTelemetry.value = null
+  loadDevices()
+  if (selectedDeviceId.value) {
+    loadTelemetry()
+  }
+}
+
+// Watch for device selection changes
+watch(selectedDeviceId, (newDeviceId) => {
+  if (newDeviceId) {
+    loadTelemetry()
+  } else {
+    telemetryData.value = []
+  }
+})
+
+// Polling setup (1 second interval, but prevent concurrent requests)
+let pollingInterval: number | undefined
+
+onMounted(async () => {
+  await loadDevices()
+  
+  // Setup polling for telemetry data
+  pollingInterval = window.setInterval(() => {
+    if (selectedDeviceId.value && !loadingTelemetry.value) {
+      loadTelemetry()
+    }
   }, 1000)
 })
-onUnmounted(() => { if (t) clearInterval(t) })
+
+onUnmounted(() => {
+  if (pollingInterval) {
+    clearInterval(pollingInterval)
+  }
+})
 </script>
 
 <style scoped>
-/* sem estilos extras: usamos theme.css (stat-grid, chip-grid, card, etc.) */
+.error-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--sp-4, 16px);
+  background-color: #fef2f2;
+  border: 1px solid #fca5a5;
+  border-radius: var(--radius, 8px);
+  gap: var(--sp-3, 12px);
+}
+
+.error-content {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3, 12px);
+}
+
+.error-icon {
+  font-size: 24px;
+}
+
+.error-content strong {
+  color: #991b1b;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.error-content p {
+  color: #7f1d1d;
+  margin: 0;
+  font-size: var(--fs-sm, 14px);
+}
+
+.form-label {
+  display: block;
+  margin-bottom: var(--sp-2, 8px);
+  font-weight: 600;
+  font-size: var(--fs-sm, 14px);
+}
+
+.form-select {
+  width: 100%;
+  padding: var(--sp-2, 8px) var(--sp-3, 12px);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: var(--radius, 8px);
+  font-size: var(--fs-base, 16px);
+  background-color: white;
+  cursor: pointer;
+}
+
+.form-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 </style>
