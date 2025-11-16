@@ -2,6 +2,7 @@
 .env
 .env.local
 .env.*.local
+Portifolio_back/.ENV
 
 # Go
 # Binaries for programs and plugins
