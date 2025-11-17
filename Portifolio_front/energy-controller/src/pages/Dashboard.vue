@@ -213,8 +213,8 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: var(--sp-4, 16px);
-  background-color: #fef2f2;
-  border: 1px solid #fca5a5;
+  background-color: #920707;
+  border: 1px solid #ffffff;
   border-radius: var(--radius, 8px);
   gap: var(--sp-3, 12px);
 }
@@ -230,13 +230,13 @@ onUnmounted(() => {
 }
 
 .error-content strong {
-  color: #991b1b;
+  color: #000000;
   display: block;
   margin-bottom: 4px;
 }
 
 .error-content p {
-  color: #7f1d1d;
+  color: #000000;
   margin: 0;
   font-size: var(--fs-sm, 14px);
 }
