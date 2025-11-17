@@ -4,7 +4,7 @@
       <!-- Título + badge -->
       <header class="row" style="justify-content: space-between;">
         <h2 style="font-size: var(--fs-xl); font-weight: 700;">Dashboard</h2>
-        <span class="badge">tempo real (mock)</span>
+        <span class="badge">tempo real</span>
       </header>
 
       <!-- Error States -->
