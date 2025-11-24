@@ -1,166 +1,183 @@
 package devices
 
 import (
-	"database/sql"
-	"encoding/json"
-	"errors"
 	"net/http"
 	"strconv"
+
+	"github.com/gin-gonic/gin"
 )
 
-// Handler holds dependencies for HTTP handlers.
+// Handler handles device HTTP requests.
 type Handler struct {
 	Repo *Repo
-	// You can add logger or other deps here
 }
 
-// NewHandler builds a new Handler instance.
-func NewHandler(db *sql.DB) *Handler {
-	return &Handler{Repo: NewRepo(db)}
+// NewHandler creates a new device handler.
+func NewHandler(repo *Repo) *Handler {
+	return &Handler{Repo: repo}
 }
 
-// Helper: extract user ID from request context
-// TODO: Replace with real auth extraction used in your project (e.g., from middleware)
-func getUserIDFromContext(r *http.Request) (int64, error) {
-	// Example: if auth middleware sets r.Context() value "user_id" (int64)
-	v := r.Context().Value("user_id")
-	if v == nil {
-		return 0, errors.New("unauthenticated")
-	}
-	switch t := v.(type) {
-	case int64:
-		return t, nil
-	case int:
-		return int64(t), nil
-	case string:
-		// attempt parse
-		if id, err := strconv.ParseInt(t, 10, 64); err == nil {
-			return id, nil
-		}
-	}
-	return 0, errors.New("invalid user in context")
+// RegisterRoutes registers device routes on the Gin engine.
+func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
+	g := r.Group("/devices")
+	g.GET("", h.List)
+	g.GET("/:id", h.Get)
+	g.POST("", h.Create)
+	g.PUT("/:id", h.Update)
+	g.DELETE("/:id", h.Delete)
 }
 
-// registerRoutes demonstrates how to register handlers on a mux.Router or http.ServeMux
-// Example usage (pseudo-code from main): http.HandleFunc("/api/devices", handler.ListDevices) etc.
-
-// ListDevices handles GET /api/devices
-func (h *Handler) ListDevices(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	uid, err := getUserIDFromContext(r)
-	if err != nil {
-		http.Error(w, "unauthenticated", http.StatusUnauthorized)
+// List returns all devices for the authenticated user.
+func (h *Handler) List(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
-	devs, err := h.Repo.ListByUser(ctx, uid)
+
+	devices, err := h.Repo.ListByUser(c.Request.Context(), userID)
 	if err != nil {
-		http.Error(w, "failed to list devices: "+err.Error(), http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch devices"})
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(devs)
+
+	if devices == nil {
+		devices = []Device{}
+	}
+	c.JSON(http.StatusOK, devices)
 }
 
-// CreateDeviceRequest represents the payload for creating a device.
-type CreateDeviceRequest struct {
-	Name     string `json:"name"`
-	Room     string `json:"room,omitempty"`
-	Metadata string `json:"metadata,omitempty"`
-}
-
-// CreateDevice handles POST /api/devices
-func (h *Handler) CreateDevice(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	uid, err := getUserIDFromContext(r)
-	if err != nil {
-		http.Error(w, "unauthenticated", http.StatusUnauthorized)
+// Get returns a single device by ID.
+func (h *Handler) Get(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
+
+	idStr := c.Param("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+
+	device, err := h.Repo.GetByID(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "device not found"})
+		return
+	}
+
+	// Ensure user owns this device
+	if device.UserID != userID {
+		c.JSON(http.StatusNotFound, gin.H{"error": "device not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, device)
+}
+
+// Create adds a new device for the authenticated user.
+func (h *Handler) Create(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
 	var req CreateDeviceRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid payload", http.StatusBadRequest)
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid payload: name is required"})
 		return
 	}
-	if req.Name == "" {
-		http.Error(w, "name is required", http.StatusBadRequest)
-		return
-	}
+
 	device := &Device{
-		UserID:   uid,
+		UserID:   userID,
 		Name:     req.Name,
 		Room:     req.Room,
+		Type:     req.Type,
+		Status:   "offline",
 		Metadata: req.Metadata,
 	}
-	id, err := h.Repo.Create(ctx, device)
+
+	id, err := h.Repo.Create(c.Request.Context(), device)
 	if err != nil {
-		http.Error(w, "failed to create device: "+err.Error(), http.StatusInternalServerError)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create device"})
 		return
 	}
+
 	device.ID = id
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(device)
+	c.JSON(http.StatusCreated, device)
 }
 
-// DeleteDevice handles DELETE /api/devices/{id}
-// This handler expects the router to pass the id as a URL param; here we parse from query 'id' if not using a router lib.
-func (h *Handler) DeleteDevice(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	uid, err := getUserIDFromContext(r)
+// Update modifies an existing device.
+func (h *Handler) Update(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	idStr := c.Param("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		http.Error(w, "unauthenticated", http.StatusUnauthorized)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
 		return
 	}
-	// Try to get id from URL path (if router sets), otherwise from query param 'id'
-	var idStr string
-	// If you use gorilla/mux or chi, replace this with mux.Vars(r)["id"]
-	if rid := r.URL.Query().Get("id"); rid != "" {
-		idStr = rid
-	} else {
-		// fallback: last path segment
-		segments := splitPathSegments(r.URL.Path)
-		if len(segments) > 0 {
-			idStr = segments[len(segments)-1]
-		}
-	}
-	if idStr == "" {
-		http.Error(w, "missing device id", http.StatusBadRequest)
+
+	var req UpdateDeviceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid payload"})
 		return
 	}
-	deviceID, err := strconv.ParseInt(idStr, 10, 64)
+
+	if err := h.Repo.Update(c.Request.Context(), userID, id, &req); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update device"})
+		return
+	}
+
+	// Fetch updated device
+	device, err := h.Repo.GetByID(c.Request.Context(), id)
 	if err != nil {
-		http.Error(w, "invalid id", http.StatusBadRequest)
+		c.JSON(http.StatusNotFound, gin.H{"error": "device not found"})
 		return
 	}
-	if err := h.Repo.Delete(ctx, uid, deviceID); err != nil {
-		if err == sql.ErrNoRows {
-			http.Error(w, "not found", http.StatusNotFound)
-			return
-		}
-		http.Error(w, "failed to delete: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
+
+	c.JSON(http.StatusOK, device)
 }
 
-// splitPathSegments is a tiny helper to get path segments (no external deps).
-func splitPathSegments(path string) []string {
-	// remove trailing slash
-	if len(path) > 1 && path[len(path)-1] == '/' {
-		path = path[:len(path)-1]
+// Delete removes a device by ID.
+func (h *Handler) Delete(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
 	}
-	segments := []string{}
-	start := 0
-	for i := 0; i < len(path); i++ {
-		if path[i] == '/' {
-			if i-start > 0 {
-				segments = append(segments, path[start:i])
-			}
-			start = i + 1
-		}
+
+	idStr := c.Param("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
 	}
-	if start < len(path) {
-		segments = append(segments, path[start:])
+
+	if err := h.Repo.Delete(c.Request.Context(), userID, id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete device"})
+		return
 	}
-	return segments
+
+	c.Status(http.StatusNoContent)
+}
+
+// getUserID extracts user ID from Gin context (set by auth middleware).
+func getUserID(c *gin.Context) (int64, bool) {
+	sub := c.GetString("sub")
+	if sub == "" {
+		return 0, false
+	}
+	id, err := strconv.ParseInt(sub, 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return id, true
 }

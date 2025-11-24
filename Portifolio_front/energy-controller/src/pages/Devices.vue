@@ -5,7 +5,7 @@
       <!-- Título -->
       <header class="row" style="justify-content: space-between;">
         <h2 style="font-size: var(--fs-xl); font-weight: 700;">Dispositivos</h2>
-        <span class="badge">MVP</span>
+        <span class="badge">{{ devices.length }} dispositivos</span>
       </header>
 
       <!-- Error State -->
@@ -16,11 +16,11 @@
 
       <!-- Formulário -->
       <section class="card" style="padding: var(--sp-5);">
-        <form class="row" style="gap: var(--sp-3); align-items: stretch;" @submit.prevent="add">
+        <form class="row" style="gap: var(--sp-3); align-items: stretch; flex-wrap: wrap;" @submit.prevent="add">
           <input
             v-model.trim="name"
             class="input"
-            placeholder="Nome"
+            placeholder="Nome do dispositivo"
             aria-label="Nome do dispositivo"
             required
             autocomplete="off"
@@ -29,12 +29,16 @@
           <input
             v-model.trim="room"
             class="input"
-            placeholder="Ambiente"
+            placeholder="Ambiente (ex: Sala, Quarto)"
             aria-label="Ambiente do dispositivo"
-            required
             autocomplete="off"
             :disabled="loading"
           />
+          <select v-model="deviceType" class="input" :disabled="loading">
+            <option value="smart_plug">Tomada Inteligente</option>
+            <option value="sensor">Sensor</option>
+            <option value="meter">Medidor</option>
+          </select>
           <button class="btn btn--solid" :disabled="!canAdd || loading">
             <span v-if="!loading">Adicionar</span>
             <LoadingSpinner v-else small />
@@ -42,8 +46,14 @@
         </form>
       </section>
 
+      <!-- Loading state -->
+      <section v-if="loadingList" class="card" style="padding: var(--sp-5);">
+        <LoadingSpinner />
+        <p class="text-muted" style="text-align: center; margin-top: var(--sp-3);">Carregando dispositivos...</p>
+      </section>
+
       <!-- Lista -->
-      <section v-if="devices.length > 0" class="grid device-grid">
+      <section v-else-if="devices.length > 0" class="grid device-grid">
         <article
           v-for="d in devices"
           :key="d.id"
@@ -52,10 +62,17 @@
         >
           <div class="row" style="justify-content: space-between;">
             <strong style="font-size: var(--fs-lg);">{{ d.name }}</strong>
-            <span class="badge">{{ d.room }}</span>
+            <span :class="['badge', d.status === 'online' ? 'badge--success' : '']">
+              {{ d.status === 'online' ? '🟢 Online' : '⚫ Offline' }}
+            </span>
           </div>
 
-          <div class="row" style="justify-content: space-between;">
+          <div class="row" style="gap: var(--sp-2); flex-wrap: wrap;">
+            <span v-if="d.room" class="badge">📍 {{ d.room }}</span>
+            <span class="badge">{{ getDeviceTypeLabel(d.type) }}</span>
+          </div>
+
+          <div class="row" style="justify-content: space-between; margin-top: auto;">
             <span class="text-muted small">ID: {{ d.id }}</span>
             <button 
               class="btn btn--outline" 
@@ -70,28 +87,49 @@
 
       <!-- Empty state -->
       <section v-else class="card" style="padding: var(--sp-5);">
-        <p class="text-muted">Nenhum dispositivo ainda. Adicione o primeiro acima.</p>
+        <p class="text-muted">Nenhum dispositivo cadastrado. Adicione seu primeiro dispositivo IoT acima.</p>
       </section>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import LoadingSpinner from '../components/LoadingSpinner.vue'
-// Uncomment when API is ready:
-// import api from '../api/axios'
-
-type Device = { id: number; name: string; room: string }
+import { listDevices, createDevice, deleteDevice, type Device } from '../api/devices'
 
 const devices = ref<Device[]>([])
 const name = ref('')
 const room = ref('')
+const deviceType = ref('smart_plug')
 const loading = ref(false)
+const loadingList = ref(false)
 const error = ref('')
 
-let next = 1
-const canAdd = computed(() => name.value.trim().length > 0 && room.value.trim().length > 0)
+const canAdd = computed(() => name.value.trim().length > 0)
+
+function getDeviceTypeLabel(type?: string): string {
+  switch (type) {
+    case 'smart_plug': return '🔌 Tomada'
+    case 'sensor': return '📡 Sensor'
+    case 'meter': return '⚡ Medidor'
+    default: return '📱 Dispositivo'
+  }
+}
+
+async function loadDevices() {
+  loadingList.value = true
+  error.value = ''
+  
+  try {
+    devices.value = await listDevices()
+  } catch (e: any) {
+    error.value = e?.response?.data?.error || 
+      'Erro ao carregar dispositivos. Verifique sua conexão.'
+  } finally {
+    loadingList.value = false
+  }
+}
 
 async function add() {
   if (!canAdd.value || loading.value) return
@@ -100,21 +138,16 @@ async function add() {
   error.value = ''
   
   try {
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 500))
-    // const { data } = await api.post('/devices', {
-    //   name: name.value.trim(),
-    //   room: room.value.trim()
-    // })
-    
-    // For MVP, add locally
-    devices.value.push({ 
-      id: next++, 
-      name: name.value.trim(), 
-      room: room.value.trim() 
+    const newDevice = await createDevice({
+      name: name.value.trim(),
+      room: room.value.trim() || undefined,
+      type: deviceType.value
     })
+    
+    devices.value.unshift(newDevice)
     name.value = ''
     room.value = ''
+    deviceType.value = 'smart_plug'
   } catch (e: any) {
     error.value = e?.response?.data?.error || 
       'Erro ao adicionar dispositivo. Tente novamente.'
@@ -130,10 +163,7 @@ async function remove(id: number) {
   error.value = ''
   
   try {
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 300))
-    // await api.delete(`/devices/${id}`)
-    
+    await deleteDevice(id)
     devices.value = devices.value.filter(x => x.id !== id)
   } catch (e: any) {
     error.value = e?.response?.data?.error || 
@@ -146,6 +176,10 @@ async function remove(id: number) {
 function clearError() {
   error.value = ''
 }
+
+onMounted(() => {
+  loadDevices()
+})
 </script>
 
 <style scoped>
@@ -178,5 +212,14 @@ function clearError() {
   color: var(--warn, #ff6384);
   margin: 0;
   text-align: center;
+}
+
+.badge--success {
+  background: rgba(67, 160, 71, 0.2);
+  color: #43a047;
+}
+
+select.input {
+  min-width: 150px;
 }
 </style>

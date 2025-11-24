@@ -42,7 +42,7 @@
         <article class="card stat stat--3">
           <div class="col">
             <h3 class="text-muted small">Dispositivos Ativos</h3>
-            <strong style="font-size: var(--fs-2xl);">{{ activeDevices }}</strong>
+            <strong style="font-size: var(--fs-2xl);">{{ activeDevicesCount }}</strong>
           </div>
         </article>
       </section>
@@ -57,7 +57,7 @@
 
       <!-- Telemetry Table -->
       <TelemetryTable 
-        :data="telemetryData" 
+        :data="telemetryTableData" 
         :loading="loadingTelemetry"
         @refresh="loadTelemetry"
       />
@@ -70,37 +70,53 @@ import { onMounted, onUnmounted, ref, computed } from 'vue'
 import SkeletonCard from '../components/SkeletonCard.vue'
 import ConsumptionChart from '../components/ConsumptionChart.vue'
 import TelemetryTable, { type TelemetryData } from '../components/TelemetryTable.vue'
-// Uncomment when API is ready:
-// import api from '../api/axios'
+import { listDevices, listTelemetry, type Device, type TelemetryData as ApiTelemetry } from '../api/devices'
 
 const series = ref<number[]>([])
 const labels = ref<string[]>([])
-const currentPower = ref(120)
-const activeDevices = 3
+const currentPower = ref(0)
+const devices = ref<Device[]>([])
+const telemetryRaw = ref<ApiTelemetry[]>([])
 
-const telemetryData = ref<TelemetryData[]>([])
 const loadingDevices = ref(false)
 const loadingTelemetry = ref(false)
 const errorDevices = ref('')
 const errorTelemetry = ref('')
 
 const estimatedKwh = computed(() => (currentPower.value / 1000).toFixed(3))
+const activeDevicesCount = computed(() => devices.value.filter(d => d.status === 'online').length)
+
+// Transform API telemetry data to table format
+const telemetryTableData = computed<TelemetryData[]>(() => {
+  // Group by device and get latest reading per device
+  const deviceMap = new Map<number, { telemetry: ApiTelemetry; device?: Device }>()
+  
+  for (const t of telemetryRaw.value) {
+    if (!deviceMap.has(t.device_id)) {
+      const device = devices.value.find(d => d.id === t.device_id)
+      deviceMap.set(t.device_id, { telemetry: t, device })
+    }
+  }
+  
+  return Array.from(deviceMap.values()).map(({ telemetry, device }) => ({
+    id: telemetry.id,
+    deviceName: device?.name || `Dispositivo ${telemetry.device_id}`,
+    power: telemetry.power,
+    timestamp: telemetry.timestamp
+  }))
+})
 
 let pollingTimer: number | undefined
 let isPolling = false
 
 async function loadDevices() {
-  // Prevent parallel requests
   if (loadingDevices.value) return
   
   loadingDevices.value = true
   errorDevices.value = ''
   
   try {
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    // const { data } = await api.get('/devices')
-    // Process device data here
+    devices.value = await listDevices()
   } catch (e: any) {
     errorDevices.value = e?.response?.data?.error || 
       'Erro ao carregar dispositivos. Verifique sua conexão e tente novamente.'
@@ -110,20 +126,28 @@ async function loadDevices() {
 }
 
 async function loadTelemetry() {
-  // Prevent parallel requests during polling
   if (loadingTelemetry.value) return
   
   loadingTelemetry.value = true
   errorTelemetry.value = ''
   
   try {
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 800))
-    // const { data } = await api.get('/telemetry')
+    const data = await listTelemetry(undefined, 100)
+    telemetryRaw.value = data
     
-    // Mock data for demonstration
-    const noise = (Math.random() - 0.5) * 10
-    currentPower.value = Math.max(50, currentPower.value + noise)
+    // Calculate current total power
+    if (data.length > 0) {
+      // Sum the most recent reading from each device
+      const deviceLatest = new Map<number, number>()
+      for (const t of data) {
+        if (!deviceLatest.has(t.device_id)) {
+          deviceLatest.set(t.device_id, t.power)
+        }
+      }
+      currentPower.value = Array.from(deviceLatest.values()).reduce((sum, p) => sum + p, 0)
+    }
+    
+    // Update chart series with latest power
     series.value.push(currentPower.value)
     labels.value.push(new Date().toLocaleTimeString('pt-BR'))
     
@@ -132,28 +156,6 @@ async function loadTelemetry() {
       series.value.shift()
       labels.value.shift()
     }
-    
-    // Update telemetry table
-    telemetryData.value = [
-      {
-        id: 1,
-        deviceName: 'Ar Condicionado',
-        power: currentPower.value * 0.6,
-        timestamp: new Date().toISOString()
-      },
-      {
-        id: 2,
-        deviceName: 'Geladeira',
-        power: currentPower.value * 0.3,
-        timestamp: new Date().toISOString()
-      },
-      {
-        id: 3,
-        deviceName: 'Iluminação',
-        power: currentPower.value * 0.1,
-        timestamp: new Date().toISOString()
-      }
-    ]
   } catch (e: any) {
     errorTelemetry.value = e?.response?.data?.error || 
       'Erro ao carregar dados de telemetria. Verifique sua conexão e tente novamente.'
@@ -167,11 +169,10 @@ function startPolling() {
   isPolling = true
   
   pollingTimer = window.setInterval(() => {
-    // Only poll if not currently loading (avoid parallel requests)
     if (!loadingTelemetry.value) {
       loadTelemetry()
     }
-  }, 2000) // Poll every 2 seconds
+  }, 5000) // Poll every 5 seconds
 }
 
 function stopPolling() {
@@ -183,13 +184,11 @@ function stopPolling() {
 }
 
 onMounted(async () => {
-  // Initial load
   await Promise.all([
     loadDevices(),
     loadTelemetry()
   ])
   
-  // Start polling for telemetry updates
   startPolling()
 })
 
@@ -199,7 +198,6 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* sem estilos extras: usamos theme.css (stat-grid, chip-grid, card, etc.) */
 .error-card {
   padding: var(--sp-5, 20px);
   background: rgba(255, 99, 132, 0.1);
