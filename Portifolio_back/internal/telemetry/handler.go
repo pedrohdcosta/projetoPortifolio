@@ -49,10 +49,14 @@ func (h *Handler) List(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid device_id"})
 			return
 		}
-		data, err := h.Repo.ListByDevice(c.Request.Context(), deviceID, limit)
+		// Use ListByDeviceForUser to ensure user owns the device
+		data, err := h.Repo.ListByDeviceForUser(c.Request.Context(), userID, deviceID, limit)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch telemetry"})
 			return
+		}
+		if data == nil {
+			data = []Telemetry{}
 		}
 		c.JSON(http.StatusOK, data)
 		return
@@ -64,12 +68,15 @@ func (h *Handler) List(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch telemetry"})
 		return
 	}
+	if data == nil {
+		data = []Telemetry{}
+	}
 	c.JSON(http.StatusOK, data)
 }
 
 // Create adds a new telemetry record.
 func (h *Handler) Create(c *gin.Context) {
-	_, ok := getUserID(c)
+	userID, ok := getUserID(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
@@ -78,6 +85,17 @@ func (h *Handler) Create(c *gin.Context) {
 	var req CreateTelemetryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid payload"})
+		return
+	}
+
+	// Verify user owns the device
+	owns, err := h.Repo.UserOwnsDevice(c.Request.Context(), userID, req.DeviceID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to verify device ownership"})
+		return
+	}
+	if !owns {
+		c.JSON(http.StatusForbidden, gin.H{"error": "device not found or not owned by user"})
 		return
 	}
 

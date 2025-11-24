@@ -88,12 +88,18 @@ const activeDevicesCount = computed(() => devices.value.filter(d => d.status ===
 
 // Transform API telemetry data to table format
 const telemetryTableData = computed<TelemetryData[]>(() => {
-  // Group by device and get latest reading per device
+  // Create device lookup map for O(1) access - O(m)
+  const deviceLookup = new Map<number, Device>()
+  for (const d of devices.value) {
+    deviceLookup.set(d.id, d)
+  }
+  
+  // Group by device and get latest reading per device - O(n)
   const deviceMap = new Map<number, { telemetry: ApiTelemetry; device?: Device }>()
   
   for (const t of telemetryRaw.value) {
     if (!deviceMap.has(t.device_id)) {
-      const device = devices.value.find(d => d.id === t.device_id)
+      const device = deviceLookup.get(t.device_id)
       deviceMap.set(t.device_id, { telemetry: t, device })
     }
   }
