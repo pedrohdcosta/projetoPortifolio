@@ -14,7 +14,7 @@ import (
 )
 
 func main() {
-	_ = godotenv.Load(".env")
+	_ = godotenv.Load("../../.env.example")
 	ctx := context.Background()
 	pool, err := db.NewPool(ctx)
 	if err != nil {

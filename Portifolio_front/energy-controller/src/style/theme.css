@@ -165,6 +165,7 @@
     background: transparent;
     color: var(--text);
     border-color: var(--border-2);
+    border-style: solid;
   }
   .btn--ghost {
     background: transparent;
