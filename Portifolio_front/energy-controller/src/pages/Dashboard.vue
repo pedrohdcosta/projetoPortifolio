@@ -7,38 +7,24 @@
         <span class="badge">tempo real</span>
       </header>
 
-      <!-- Error banner -->
-      <div v-if="errorDevices || errorTelemetry" class="error-banner">
-        <div class="error-content">
-          <span class="error-icon">⚠️</span>
-          <div>
-            <strong>Erro ao carregar dados</strong>
-            <p>{{ errorDevices || errorTelemetry }}</p>
-          </div>
-        </div>
-        <button class="btn btn--outline" @click="retryFetch">
-          Tentar novamente
-        </button>
+      <!-- Error States -->
+      <div v-if="errorDevices" class="error-card card">
+        <p class="error-message">{{ errorDevices }}</p>
+        <button class="btn btn--solid" @click="loadDevices">Tentar novamente</button>
       </div>
 
-      <!-- Device selector -->
-      <section class="card" style="padding: var(--sp-4);">
-        <label for="device-select" class="form-label">Selecionar Dispositivo</label>
-        <select 
-          id="device-select"
-          v-model="selectedDeviceId" 
-          class="form-select"
-          :disabled="loadingDevices"
-        >
-          <option :value="null">Selecione um dispositivo...</option>
-          <option v-for="device in devices" :key="device.id" :value="device.id">
-            {{ device.name }} ({{ device.status }})
-          </option>
-        </select>
-      </section>
+      <div v-if="errorTelemetry" class="error-card card">
+        <p class="error-message">{{ errorTelemetry }}</p>
+        <button class="btn btn--solid" @click="loadTelemetry">Tentar novamente</button>
+      </div>
 
       <!-- KPIs -->
-      <section class="stat-grid">
+      <section v-if="loadingDevices" class="stat-grid">
+        <SkeletonCard />
+        <SkeletonCard />
+        <SkeletonCard />
+      </section>
+      <section v-else class="stat-grid">
         <article class="card stat stat--1">
           <div class="col">
             <h3 class="text-muted small">Potência Atual</h3>
@@ -61,205 +47,172 @@
         </article>
       </section>
 
-      <!-- Consumption Chart -->
-      <section class="card" style="padding: var(--sp-5);">
-        <div class="row" style="justify-content: space-between; margin-bottom: var(--sp-3);">
-          <h3 class="text-muted small">Consumo ao Longo do Tempo</h3>
-        </div>
-        <ConsumptionChart :data="chartData" :loading="loadingTelemetry" />
-      </section>
+      <!-- Telemetry Chart -->
+      <ConsumptionChart 
+        :labels="labels" 
+        :series="series" 
+        :loading="loadingTelemetry"
+        title="Consumo - Últimos 5 minutos"
+      />
 
       <!-- Telemetry Table -->
-      <section class="card" style="padding: var(--sp-5);">
-        <TelemetryTable 
-          :data="telemetryData" 
-          :loading="loadingTelemetry"
-          @refresh="handleRefresh"
-        />
-      </section>
+      <TelemetryTable 
+        :data="telemetryData" 
+        :loading="loadingTelemetry"
+        @refresh="loadTelemetry"
+      />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, computed, watch } from 'vue'
-import { listDevices, fetchTelemetry, type Device, type TelemetryData } from '../api/devices'
+import { onMounted, onUnmounted, ref, computed } from 'vue'
+import SkeletonCard from '../components/SkeletonCard.vue'
 import ConsumptionChart from '../components/ConsumptionChart.vue'
-import TelemetryTable from '../components/TelemetryTable.vue'
+import TelemetryTable, { type TelemetryData } from '../components/TelemetryTable.vue'
+// Uncomment when API is ready:
+// import api from '../api/axios'
 
-// State
-const devices = ref<Device[]>([])
-const selectedDeviceId = ref<number | null>(null)
+const series = ref<number[]>([])
+const labels = ref<string[]>([])
+const currentPower = ref(120)
+const activeDevices = 3
+
 const telemetryData = ref<TelemetryData[]>([])
-
-// Loading states
 const loadingDevices = ref(false)
 const loadingTelemetry = ref(false)
-
-// Error states
-const errorDevices = ref<string | null>(null)
-const errorTelemetry = ref<string | null>(null)
-
-// Computed
-const currentPower = computed(() => {
-  if (telemetryData.value.length > 0) {
-    return telemetryData.value[telemetryData.value.length - 1].power
-  }
-  return 0
-})
+const errorDevices = ref('')
+const errorTelemetry = ref('')
 
 const estimatedKwh = computed(() => (currentPower.value / 1000).toFixed(3))
 
-const activeDevices = computed(() => 
-  devices.value.filter(d => d.status === 'online').length
-)
+let pollingTimer: number | undefined
+let isPolling = false
 
-const chartData = computed(() => 
-  telemetryData.value.map(d => ({
-    timestamp: d.timestamp,
-    power: d.power,
-  }))
-)
-
-// Functions
 async function loadDevices() {
+  // Prevent parallel requests
   if (loadingDevices.value) return
   
   loadingDevices.value = true
-  errorDevices.value = null
+  errorDevices.value = ''
   
   try {
-    devices.value = await listDevices()
-    // Auto-select first device if available
-    if (devices.value.length > 0 && !selectedDeviceId.value) {
-      selectedDeviceId.value = devices.value[0].id
-    }
-  } catch (err: any) {
-    errorDevices.value = err.response?.data?.error || err.message || 'Erro ao carregar dispositivos'
-    console.error('Error loading devices:', err)
+    // Simulate API call
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    // const { data } = await api.get('/devices')
+    // Process device data here
+  } catch (e: any) {
+    errorDevices.value = e?.response?.data?.error || 
+      'Erro ao carregar dispositivos. Verifique sua conexão e tente novamente.'
   } finally {
     loadingDevices.value = false
   }
 }
 
 async function loadTelemetry() {
-  if (!selectedDeviceId.value) {
-    telemetryData.value = []
-    return
-  }
-  
-  // Prevent concurrent requests
+  // Prevent parallel requests during polling
   if (loadingTelemetry.value) return
   
   loadingTelemetry.value = true
-  errorTelemetry.value = null
+  errorTelemetry.value = ''
   
   try {
-    telemetryData.value = await fetchTelemetry(selectedDeviceId.value)
-  } catch (err: any) {
-    errorTelemetry.value = err.response?.data?.error || err.message || 'Erro ao carregar telemetria'
-    console.error('Error loading telemetry:', err)
+    // Simulate API call
+    await new Promise(resolve => setTimeout(resolve, 800))
+    // const { data } = await api.get('/telemetry')
+    
+    // Mock data for demonstration
+    const noise = (Math.random() - 0.5) * 10
+    currentPower.value = Math.max(50, currentPower.value + noise)
+    series.value.push(currentPower.value)
+    labels.value.push(new Date().toLocaleTimeString('pt-BR'))
+    
+    // Keep last 300 points (~5 min at 1 sample/sec)
+    if (series.value.length > 300) {
+      series.value.shift()
+      labels.value.shift()
+    }
+    
+    // Update telemetry table
+    telemetryData.value = [
+      {
+        id: 1,
+        deviceName: 'Ar Condicionado',
+        power: currentPower.value * 0.6,
+        timestamp: new Date().toISOString()
+      },
+      {
+        id: 2,
+        deviceName: 'Geladeira',
+        power: currentPower.value * 0.3,
+        timestamp: new Date().toISOString()
+      },
+      {
+        id: 3,
+        deviceName: 'Iluminação',
+        power: currentPower.value * 0.1,
+        timestamp: new Date().toISOString()
+      }
+    ]
+  } catch (e: any) {
+    errorTelemetry.value = e?.response?.data?.error || 
+      'Erro ao carregar dados de telemetria. Verifique sua conexão e tente novamente.'
   } finally {
     loadingTelemetry.value = false
   }
 }
 
-function handleRefresh() {
-  loadTelemetry()
-}
-
-function retryFetch() {
-  errorDevices.value = null
-  errorTelemetry.value = null
-  loadDevices()
-  if (selectedDeviceId.value) {
-    loadTelemetry()
-  }
-}
-
-// Watch for device selection changes
-watch(selectedDeviceId, (newDeviceId) => {
-  if (newDeviceId) {
-    loadTelemetry()
-  } else {
-    telemetryData.value = []
-  }
-})
-
-// Polling setup (1 second interval, but prevent concurrent requests)
-let pollingInterval: number | undefined
-
-onMounted(async () => {
-  await loadDevices()
+function startPolling() {
+  if (isPolling) return
+  isPolling = true
   
-  // Setup polling for telemetry data
-  pollingInterval = window.setInterval(() => {
-    if (selectedDeviceId.value && !loadingTelemetry.value) {
+  pollingTimer = window.setInterval(() => {
+    // Only poll if not currently loading (avoid parallel requests)
+    if (!loadingTelemetry.value) {
       loadTelemetry()
     }
-  }, 1000)
+  }, 2000) // Poll every 2 seconds
+}
+
+function stopPolling() {
+  isPolling = false
+  if (pollingTimer) {
+    clearInterval(pollingTimer)
+    pollingTimer = undefined
+  }
+}
+
+onMounted(async () => {
+  // Initial load
+  await Promise.all([
+    loadDevices(),
+    loadTelemetry()
+  ])
+  
+  // Start polling for telemetry updates
+  startPolling()
 })
 
 onUnmounted(() => {
-  if (pollingInterval) {
-    clearInterval(pollingInterval)
-  }
+  stopPolling()
 })
 </script>
 
 <style scoped>
-.error-banner {
+/* sem estilos extras: usamos theme.css (stat-grid, chip-grid, card, etc.) */
+.error-card {
+  padding: var(--sp-5, 20px);
+  background: rgba(255, 99, 132, 0.1);
+  border: 1px solid rgba(255, 99, 132, 0.3);
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: var(--sp-3, 12px);
   align-items: center;
-  padding: var(--sp-4, 16px);
-  background-color: #920707;
-  border: 1px solid #ffffff;
-  border-radius: var(--radius, 8px);
-  gap: var(--sp-3, 12px);
 }
 
-.error-content {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--sp-3, 12px);
-}
-
-.error-icon {
-  font-size: 24px;
-}
-
-.error-content strong {
-  color: #000000;
-  display: block;
-  margin-bottom: 4px;
-}
-
-.error-content p {
-  color: #000000;
+.error-message {
+  color: var(--warn, #ff6384);
   margin: 0;
-  font-size: var(--fs-sm, 14px);
-}
-
-.form-label {
-  display: block;
-  margin-bottom: var(--sp-2, 8px);
-  font-weight: 600;
-  font-size: var(--fs-sm, 14px);
-}
-
-.form-select {
-  width: 100%;
-  padding: var(--sp-2, 8px) var(--sp-3, 12px);
-  border: 1px solid var(--border-color, #e5e7eb);
-  border-radius: var(--radius, 8px);
-  font-size: var(--fs-base, 16px);
-  background-color: white;
-  cursor: pointer;
-}
-
-.form-select:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+  text-align: center;
 }
 </style>

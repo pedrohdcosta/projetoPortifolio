@@ -1,41 +1,70 @@
 <template>
-  <div class="spinner-container" role="status" aria-busy="true" aria-live="polite">
-    <div class="spinner"></div>
-    <span v-if="label" class="spinner-label">{{ label }}</span>
+  <div 
+    class="loading-spinner" 
+    :class="{ 'loading-spinner--small': small }"
+    role="status" 
+    aria-busy="true"
+  >
+    <div class="spinner" aria-hidden="true" />
+    <span class="visually-hidden">Carregando...</span>
   </div>
 </template>
 
 <script setup lang="ts">
 defineProps<{
-  label?: string;
-}>();
+  small?: boolean
+}>()
 </script>
 
 <style scoped>
-.spinner-container {
-  display: flex;
-  flex-direction: column;
+.loading-spinner {
+  display: inline-flex;
   align-items: center;
-  gap: var(--sp-2, 8px);
+  justify-content: center;
+  padding: var(--sp-4, 16px);
+}
+
+.loading-spinner--small {
+  padding: var(--sp-2, 8px);
 }
 
 .spinner {
+  display: inline-block;
   width: 40px;
   height: 40px;
-  border: 4px solid rgba(0, 0, 0, 0.1);
-  border-left-color: var(--color-primary, #3b82f6);
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  border-top-color: rgba(67, 160, 71, 0.9);
   border-radius: 50%;
-  animation: spin 1s linear infinite;
+  animation: spin 0.8s linear infinite;
 }
 
-.spinner-label {
-  font-size: var(--fs-sm, 14px);
-  color: var(--text-muted, #6b7280);
+.loading-spinner--small .spinner {
+  width: 20px;
+  height: 20px;
+  border-width: 2px;
 }
 
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 1.5s;
   }
 }
 </style>

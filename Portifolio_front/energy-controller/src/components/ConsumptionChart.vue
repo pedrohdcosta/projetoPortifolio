@@ -1,161 +1,147 @@
 <template>
-  <div class="consumption-chart">
-    <SkeletonCard v-if="loading || !hasData" />
-    <div v-else class="chart-container">
-      <canvas ref="chartCanvas"></canvas>
+  <div class="consumption-chart card">
+    <div v-if="loading || isEmpty" class="chart-placeholder">
+      <SkeletonCard v-if="loading" />
+      <div v-else class="empty-state">
+        <p class="text-muted">Nenhum dado de consumo disponível.</p>
+      </div>
+    </div>
+    <div v-else class="chart-content">
+      <h3 class="chart-title">{{ title }}</h3>
+      <canvas ref="chartCanvas" role="img" :aria-label="ariaLabel" />
+      <p class="text-muted small chart-note">
+        Gráfico mostrando consumo ao longo do tempo
+      </p>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted, computed } from 'vue';
-import {
-  Chart,
-  LineController,
-  LineElement,
-  PointElement,
-  LinearScale,
-  TimeScale,
-  Title,
-  Tooltip,
-  Legend,
-  CategoryScale,
-  Filler,
-} from 'chart.js';
-import SkeletonCard from './SkeletonCard.vue';
-
-// Register Chart.js components
-Chart.register(
-  LineController,
-  LineElement,
-  PointElement,
-  LinearScale,
-  TimeScale,
-  CategoryScale,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-);
-
-interface ChartData {
-  timestamp: string;
-  power: number;
-}
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
+import SkeletonCard from './SkeletonCard.vue'
 
 const props = defineProps<{
-  data: ChartData[];
-  loading?: boolean;
-}>();
+  labels: string[]
+  series: number[]
+  title?: string
+  loading?: boolean
+}>()
 
-const chartCanvas = ref<HTMLCanvasElement | null>(null);
-let chartInstance: Chart | null = null;
+const chartCanvas = ref<HTMLCanvasElement | null>(null)
+const isEmpty = computed(() => props.labels.length === 0 || props.series.length === 0)
+const ariaLabel = computed(() => 
+  `Gráfico de consumo com ${props.series.length} pontos de dados`
+)
 
-const hasData = computed(() => props.data && props.data.length > 0);
+// Simple canvas rendering (placeholder for real chart library)
+function renderChart() {
+  if (!chartCanvas.value || isEmpty.value || props.loading) return
+  
+  const canvas = chartCanvas.value
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
 
-function createChart() {
-  if (!chartCanvas.value || !hasData.value) return;
+  // Set canvas size
+  canvas.width = canvas.offsetWidth * 2
+  canvas.height = 300 * 2
+  ctx.scale(2, 2)
 
-  const labels = props.data.map((d) => {
-    const date = new Date(d.timestamp);
-    return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  });
-  const values = props.data.map((d) => d.power);
+  // Clear canvas
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-  chartInstance = new Chart(chartCanvas.value, {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [
-        {
-          label: 'Potência (W)',
-          data: values,
-          borderColor: 'rgb(59, 130, 246)',
-          backgroundColor: 'rgba(59, 130, 246, 0.1)',
-          fill: true,
-          tension: 0.4,
-          pointRadius: 2,
-          pointHoverRadius: 5,
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          display: true,
-          position: 'top',
-        },
-        tooltip: {
-          mode: 'index',
-          intersect: false,
-        },
-      },
-      scales: {
-        x: {
-          display: true,
-          title: {
-            display: true,
-            text: 'Tempo',
-          },
-        },
-        y: {
-          display: true,
-          title: {
-            display: true,
-            text: 'Potência (W)',
-          },
-          beginAtZero: true,
-        },
-      },
-      interaction: {
-        mode: 'nearest',
-        axis: 'x',
-        intersect: false,
-      },
-    },
-  });
-}
+  // Draw simple line chart
+  const padding = 40
+  const width = canvas.width / 2 - padding * 2
+  const height = canvas.height / 2 - padding * 2
+  
+  const max = Math.max(...props.series, 1)
+  const min = Math.min(...props.series, 0)
+  const range = max - min || 1
 
-function destroyChart() {
-  if (chartInstance) {
-    chartInstance.destroy();
-    chartInstance = null;
-  }
-}
+  ctx.strokeStyle = 'rgba(67, 160, 71, 0.8)'
+  ctx.lineWidth = 2
+  ctx.beginPath()
 
-watch(
-  () => [props.data, props.loading],
-  () => {
-    if (!props.loading && hasData.value) {
-      destroyChart();
-      setTimeout(() => createChart(), 0);
+  props.series.forEach((value, index) => {
+    const x = padding + (index / (props.series.length - 1 || 1)) * width
+    const y = padding + height - ((value - min) / range) * height
+    
+    if (index === 0) {
+      ctx.moveTo(x, y)
+    } else {
+      ctx.lineTo(x, y)
     }
-  },
-  { deep: true }
-);
+  })
+
+  ctx.stroke()
+
+  // Draw axes
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)'
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.moveTo(padding, padding)
+  ctx.lineTo(padding, padding + height)
+  ctx.lineTo(padding + width, padding + height)
+  ctx.stroke()
+}
+
+watch([() => props.labels, () => props.series, () => props.loading], () => {
+  if (!props.loading) {
+    setTimeout(renderChart, 100)
+  }
+})
 
 onMounted(() => {
-  if (!props.loading && hasData.value) {
-    createChart();
+  if (!props.loading && !isEmpty.value) {
+    renderChart()
   }
-});
+  window.addEventListener('resize', renderChart)
+})
 
 onUnmounted(() => {
-  destroyChart();
-});
+  window.removeEventListener('resize', renderChart)
+})
 </script>
 
 <style scoped>
 .consumption-chart {
-  width: 100%;
+  padding: var(--sp-5, 20px);
   min-height: 300px;
 }
 
-.chart-container {
+.chart-placeholder {
+  min-height: 250px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chart-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3, 12px);
+}
+
+.chart-title {
+  font-size: var(--fs-lg, 1.25rem);
+  font-weight: 600;
+  margin: 0;
+}
+
+canvas {
   width: 100%;
   height: 300px;
-  position: relative;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.chart-note {
+  margin-top: var(--sp-2, 8px);
+  font-size: 0.875rem;
+}
+
+.empty-state {
+  padding: var(--sp-6, 24px);
+  text-align: center;
 }
 </style>

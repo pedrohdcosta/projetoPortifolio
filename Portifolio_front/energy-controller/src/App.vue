@@ -34,19 +34,19 @@
 </template>
 
 <script setup lang="ts">
-import { RouterLink, RouterView, useRouter} from 'vue-router'
+import { RouterLink, RouterView, useRouter } from 'vue-router'
 import { computed } from 'vue'
 import { useAuth } from './stores/auth'
 
 const auth = useAuth()
 const router = useRouter()
 const isAuth = computed(() => auth.isAuthenticated)
+
 function logout() {
   auth.logout()
   // navegar para /login para forçar o router a renderizar a tela de autenticação
   router.push('/login').catch(() => {})
 }
-
 </script>
 
 <style scoped>
