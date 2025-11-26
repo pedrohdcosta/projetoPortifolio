@@ -86,7 +86,16 @@
 
           <div class="row" style="justify-content: space-between; margin-top: auto;">
             <span class="text-muted small">ID: {{ d.id }}</span>
-            <div class="row" style="gap: var(--sp-2);">
+            <div class="row" style="gap: var(--sp-2); flex-wrap: wrap;">
+              <button 
+                class="btn btn--outline btn--sm btn--simulate" 
+                @click="generateReading(d.id)"
+                :disabled="loading || simulating === d.id"
+                title="Gerar leitura simulada"
+              >
+                <span v-if="simulating === d.id">⏳</span>
+                <span v-else>⚡ Simular</span>
+              </button>
               <button 
                 class="btn btn--outline btn--sm" 
                 @click="viewTelemetry(d.id)"
@@ -160,6 +169,31 @@
               >Mês</button>
             </div>
 
+            <!-- Simulator Section -->
+            <div class="simulator-section">
+              <h4>🔌 Simulador de Tomada</h4>
+              <p class="text-muted small">Gere dados simulados para testar o dispositivo sem hardware real.</p>
+              <div class="simulator-controls">
+                <button 
+                  class="btn btn--outline btn--sm"
+                  @click="generateBulkReadings"
+                  :disabled="generatingBulk"
+                >
+                  <span v-if="generatingBulk">⏳ Gerando...</span>
+                  <span v-else>📈 Gerar histórico (24h)</span>
+                </button>
+                <button 
+                  class="btn btn--solid btn--sm"
+                  @click="generateSingleReading"
+                  :disabled="generatingSingle"
+                >
+                  <span v-if="generatingSingle">⏳</span>
+                  <span v-else>⚡ Nova leitura</span>
+                </button>
+              </div>
+              <p v-if="simulatorMessage" class="simulator-message text-muted small">{{ simulatorMessage }}</p>
+            </div>
+
             <!-- Telemetry List -->
             <div v-if="selectedTelemetry.length > 0" class="telemetry-list">
               <div class="telemetry-row telemetry-header">
@@ -193,6 +227,8 @@ import {
   getLatestTelemetry,
   getDeviceTelemetry,
   getDeviceTelemetrySummary,
+  simulateTelemetry,
+  simulateBulkTelemetry,
   type Device,
   type TelemetryData,
   type TelemetrySummary
@@ -220,6 +256,12 @@ const selectedTelemetry = ref<TelemetryData[]>([])
 const selectedSummary = ref<TelemetrySummary | null>(null)
 const selectedPeriod = ref<'day' | 'week' | 'month'>('day')
 const loadingTelemetry = ref(false)
+
+// Simulator state
+const simulating = ref<number | null>(null) // deviceId being simulated
+const generatingSingle = ref(false)
+const generatingBulk = ref(false)
+const simulatorMessage = ref('')
 
 // Computed property for displayed telemetry with configurable limit
 const displayedTelemetry = computed(() => selectedTelemetry.value.slice(0, TELEMETRY_DISPLAY_LIMIT))
@@ -369,10 +411,108 @@ async function changePeriod(period: 'day' | 'week' | 'month') {
   }
 }
 
+// Simulator functions
+
+async function generateReading(deviceId: number) {
+  simulating.value = deviceId
+  
+  try {
+    const result = await simulateTelemetry(deviceId, {
+      base_power: 150,
+      variation: 0.2,
+      base_voltage: 220
+    })
+    
+    // Update the latest telemetry for this device
+    if (result.power !== undefined) {
+      const existing = latestTelemetry.value.findIndex(t => t.device_id === deviceId)
+      const newReading: TelemetryData = {
+        id: result.id || 0,
+        device_id: deviceId,
+        power: result.power,
+        voltage: result.voltage,
+        current: result.current,
+        timestamp: result.timestamp || new Date().toISOString()
+      }
+      
+      if (existing >= 0) {
+        latestTelemetry.value[existing] = newReading
+      } else {
+        latestTelemetry.value.push(newReading)
+      }
+      
+      // Update device status to online
+      const device = devices.value.find(d => d.id === deviceId)
+      if (device) {
+        device.status = 'online'
+        device.last_seen = new Date().toISOString()
+      }
+    }
+  } catch (e: any) {
+    error.value = e?.response?.data?.error || 'Erro ao simular leitura.'
+  } finally {
+    simulating.value = null
+  }
+}
+
+async function generateSingleReading() {
+  if (selectedDeviceId.value === null) return
+  
+  generatingSingle.value = true
+  simulatorMessage.value = ''
+  
+  try {
+    const result = await simulateTelemetry(selectedDeviceId.value, {
+      base_power: 150,
+      variation: 0.2,
+      base_voltage: 220
+    })
+    
+    simulatorMessage.value = `✅ Leitura gerada: ${result.power?.toFixed(1)} W`
+    
+    // Refresh telemetry data
+    await loadDeviceTelemetry(selectedDeviceId.value)
+  } catch (e: any) {
+    simulatorMessage.value = `❌ ${e?.response?.data?.error || 'Erro ao simular'}`
+  } finally {
+    generatingSingle.value = false
+  }
+}
+
+async function generateBulkReadings() {
+  if (selectedDeviceId.value === null) return
+  
+  generatingBulk.value = true
+  simulatorMessage.value = 'Gerando dados históricos...'
+  
+  try {
+    const result = await simulateBulkTelemetry(selectedDeviceId.value, {
+      base_power: 150,
+      variation: 0.2,
+      base_voltage: 220,
+      count: 48, // 48 readings
+      interval_sec: 1800 // 30 minutes apart = 24 hours of data
+    })
+    
+    simulatorMessage.value = `✅ ${result.readings_created} leituras geradas com sucesso!`
+    
+    // Refresh telemetry data
+    await loadDeviceTelemetry(selectedDeviceId.value)
+    
+    // Also refresh latest telemetry
+    latestTelemetry.value = await getLatestTelemetry()
+  } catch (e: any) {
+    simulatorMessage.value = `❌ ${e?.response?.data?.error || 'Erro ao gerar histórico'}`
+  } finally {
+    generatingBulk.value = false
+  }
+}
+
 function closeModal() {
   selectedDeviceId.value = null
   selectedTelemetry.value = []
   selectedSummary.value = null
+  simulatorMessage.value = ''
 }
 
 function clearError() {
@@ -551,6 +691,43 @@ select.input {
   display: flex;
   gap: var(--sp-2);
   justify-content: center;
+}
+
+/* Simulator Section */
+.simulator-section {
+  background: rgba(0, 150, 136, 0.1);
+  border: 1px solid rgba(0, 150, 136, 0.3);
+  border-radius: 8px;
+  padding: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.simulator-section h4 {
+  margin: 0;
+  font-size: 1rem;
+  color: #00bfa5;
+}
+
+.simulator-controls {
+  display: flex;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.simulator-message {
+  margin-top: var(--sp-2);
+  font-style: italic;
+}
+
+.btn--simulate {
+  border-color: #00bfa5;
+  color: #00bfa5;
+}
+
+.btn--simulate:hover {
+  background: rgba(0, 150, 136, 0.1);
 }
 
 /* Telemetry List */

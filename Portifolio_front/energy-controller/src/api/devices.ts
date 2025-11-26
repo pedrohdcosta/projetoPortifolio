@@ -136,3 +136,42 @@ export async function getDeviceLatestTelemetry(deviceId: number): Promise<Teleme
   const { data } = await api.get(`/devices/${deviceId}/telemetry/latest`);
   return data;
 }
+
+// Simulator API functions
+
+export interface SimulatorConfig {
+  base_power?: number;   // Base power in Watts (default: 150)
+  variation?: number;    // Random variation percentage (default: 0.15 = 15%)
+  base_voltage?: number; // Base voltage (default: 220)
+  count?: number;        // Number of readings to generate (for bulk, max: 100)
+  interval_sec?: number; // Interval between readings in seconds (for bulk, default: 300)
+}
+
+export interface SimulatorResponse {
+  id?: number;
+  device_id: number;
+  power?: number;
+  voltage?: number;
+  current?: number;
+  timestamp?: string;
+  message?: string;
+  readings_created?: number;
+}
+
+// Generate a single simulated telemetry reading for a device
+export async function simulateTelemetry(
+  deviceId: number, 
+  config?: SimulatorConfig
+): Promise<SimulatorResponse> {
+  const { data } = await api.post(`/simulator/generate/${deviceId}`, config || {});
+  return data;
+}
+
+// Generate multiple historical telemetry readings for a device
+export async function simulateBulkTelemetry(
+  deviceId: number, 
+  config?: SimulatorConfig
+): Promise<SimulatorResponse> {
+  const { data } = await api.post(`/simulator/bulk/${deviceId}`, config || {});
+  return data;
+}

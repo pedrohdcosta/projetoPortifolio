@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -12,6 +13,7 @@ import (
 	"github.com/pedrohdcosta/projetoPortifolio/Portifolio_back/internal/auth"
 	"github.com/pedrohdcosta/projetoPortifolio/Portifolio_back/internal/db"
 	"github.com/pedrohdcosta/projetoPortifolio/Portifolio_back/internal/devices"
+	"github.com/pedrohdcosta/projetoPortifolio/Portifolio_back/internal/simulator"
 	"github.com/pedrohdcosta/projetoPortifolio/Portifolio_back/internal/telemetry"
 )
 
@@ -63,6 +65,11 @@ func setupRouter(ctx context.Context, pool *pgxpool.Pool) *gin.Engine {
 		
 		// Device-specific telemetry routes (/api/devices/:id/telemetry)
 		telemetryHandler.RegisterDeviceTelemetryRoutes(api.Group("/devices"))
+
+		// Simulator for generating test telemetry data
+		simulatorCreator := &telemetryCreatorAdapter{repo: telemetryRepo}
+		simulatorHandler := simulator.NewHandler(simulatorCreator)
+		simulatorHandler.RegisterRoutes(api)
 	}
 
 	// Configure static file serving for frontend SPA
@@ -185,6 +192,30 @@ func (t *telemetryQuerier) Query(ctx context.Context, sql string, args ...any) (
 		return nil, err
 	}
 	return &pgxRows{rows: r}, nil
+}
+
+// telemetryCreatorAdapter adapts telemetry.Repo to simulator.TelemetryCreator interface.
+type telemetryCreatorAdapter struct {
+	repo *telemetry.Repo
+}
+
+func (a *telemetryCreatorAdapter) CreateTelemetry(deviceID int64, power, voltage, current float64, timestamp time.Time) (int64, error) {
+	t := &telemetry.Telemetry{
+		DeviceID:  deviceID,
+		Power:     power,
+		Voltage:   &voltage,
+		Current:   &current,
+		Timestamp: timestamp,
+	}
+	return a.repo.Create(context.Background(), t)
+}
+
+func (a *telemetryCreatorAdapter) UserOwnsDevice(userID, deviceID int64) (bool, error) {
+	return a.repo.UserOwnsDevice(context.Background(), userID, deviceID)
+}
+
+func (a *telemetryCreatorAdapter) UpdateDeviceStatus(deviceID int64) error {
+	return a.repo.UpdateDeviceLastSeenAndStatus(context.Background(), deviceID)
 }
 
 func ensureSchema(ctx context.Context, p *pgxpool.Pool) {
