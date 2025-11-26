@@ -168,7 +168,7 @@
                 <span>Tensão</span>
                 <span>Corrente</span>
               </div>
-              <div v-for="t in selectedTelemetry.slice(0, 10)" :key="t.id" class="telemetry-row">
+              <div v-for="t in displayedTelemetry" :key="t.id" class="telemetry-row">
                 <span>{{ formatTimestamp(t.timestamp) }}</span>
                 <span>{{ t.power.toFixed(1) }} W</span>
                 <span>{{ t.voltage?.toFixed(1) || '--' }} V</span>
@@ -198,6 +198,9 @@ import {
   type TelemetrySummary
 } from '../api/devices'
 
+// Configuration constants
+const TELEMETRY_DISPLAY_LIMIT = 10
+
 interface DeviceWithTelemetry extends Device {
   latestPower?: number;
 }
@@ -217,6 +220,9 @@ const selectedTelemetry = ref<TelemetryData[]>([])
 const selectedSummary = ref<TelemetrySummary | null>(null)
 const selectedPeriod = ref<'day' | 'week' | 'month'>('day')
 const loadingTelemetry = ref(false)
+
+// Computed property for displayed telemetry with configurable limit
+const displayedTelemetry = computed(() => selectedTelemetry.value.slice(0, TELEMETRY_DISPLAY_LIMIT))
 
 const canAdd = computed(() => name.value.trim().length > 0)
 

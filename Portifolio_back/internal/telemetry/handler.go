@@ -1,6 +1,7 @@
 package telemetry
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -234,7 +235,9 @@ func (h *Handler) Create(c *gin.Context) {
 	}
 
 	// Update device last_seen and status to 'online'
-	_ = h.Repo.UpdateDeviceLastSeenAndStatus(c.Request.Context(), req.DeviceID)
+	if err := h.Repo.UpdateDeviceLastSeenAndStatus(c.Request.Context(), req.DeviceID); err != nil {
+		log.Printf("Warning: failed to update device status for device %d: %v", req.DeviceID, err)
+	}
 
 	t.ID = id
 	c.JSON(http.StatusCreated, t)

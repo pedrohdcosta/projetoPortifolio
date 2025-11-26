@@ -161,19 +161,21 @@ func (r *Repo) UpdateDeviceLastSeenAndStatus(ctx context.Context, deviceID int64
 
 // GetSummaryByDevice returns aggregated telemetry for a device over a time period.
 func (r *Repo) GetSummaryByDevice(ctx context.Context, userID, deviceID int64, period string) (*TelemetrySummary, error) {
-	var interval string
+	// Validate period against whitelist to prevent SQL injection
+	var days int
 	switch period {
 	case "day":
-		interval = "1 day"
+		days = 1
 	case "week":
-		interval = "7 days"
+		days = 7
 	case "month":
-		interval = "30 days"
+		days = 30
 	default:
-		interval = "1 day"
+		days = 1
 		period = "day"
 	}
 
+	// Use parameterized query with days as integer parameter
 	sql := `SELECT 
 				COUNT(*) as total_records,
 				COALESCE(AVG(t.power), 0) as avg_power,
@@ -181,18 +183,18 @@ func (r *Repo) GetSummaryByDevice(ctx context.Context, userID, deviceID int64, p
 				COALESCE(MIN(t.power), 0) as min_power,
 				COALESCE(AVG(t.voltage), 0) as avg_voltage,
 				COALESCE(AVG(t.current), 0) as avg_current,
-				MIN(t.timestamp) as start_time,
-				MAX(t.timestamp) as end_time
+				COALESCE(MIN(t.timestamp), NOW()) as start_time,
+				COALESCE(MAX(t.timestamp), NOW()) as end_time
 			FROM telemetry t
 			JOIN device d ON t.device_id = d.id
-			WHERE t.device_id = $1 AND d.user_id = $2 AND t.timestamp >= NOW() - INTERVAL '` + interval + `'`
+			WHERE t.device_id = $1 AND d.user_id = $2 AND t.timestamp >= NOW() - ($3 || ' days')::INTERVAL`
 
 	var summary TelemetrySummary
 	var avgVoltage, avgCurrent float64
 	summary.DeviceID = deviceID
 	summary.Period = period
 
-	err := r.q.QueryRow(ctx, sql, deviceID, userID).Scan(
+	err := r.q.QueryRow(ctx, sql, deviceID, userID, days).Scan(
 		&summary.TotalRecords,
 		&summary.AvgPower,
 		&summary.MaxPower,
