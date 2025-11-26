@@ -22,8 +22,17 @@ func NewHandler(repo *Repo) *Handler {
 func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	g := r.Group("/telemetry")
 	g.GET("", h.List)
+	g.GET("/latest", h.ListLatest)
 	g.POST("", h.Create)
 	g.DELETE("/:id", h.Delete)
+}
+
+// RegisterDeviceTelemetryRoutes registers device-specific telemetry routes.
+func (h *Handler) RegisterDeviceTelemetryRoutes(r *gin.RouterGroup) {
+	// These routes are registered under /api/devices/:id/telemetry
+	r.GET("/:id/telemetry", h.ListByDevice)
+	r.GET("/:id/telemetry/summary", h.GetSummary)
+	r.GET("/:id/telemetry/latest", h.GetLatest)
 }
 
 // List returns telemetry data for the authenticated user or a specific device.
@@ -74,7 +83,118 @@ func (h *Handler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, data)
 }
 
-// Create adds a new telemetry record.
+// ListLatest returns the latest telemetry reading for each device of the user.
+func (h *Handler) ListLatest(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	data, err := h.Repo.GetLatestByUserDevices(c.Request.Context(), userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch latest telemetry"})
+		return
+	}
+	if data == nil {
+		data = []Telemetry{}
+	}
+	c.JSON(http.StatusOK, data)
+}
+
+// ListByDevice returns telemetry for a specific device (via /api/devices/:id/telemetry).
+func (h *Handler) ListByDevice(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	deviceID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid device id"})
+		return
+	}
+
+	limit := 100
+	if l := c.Query("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+
+	data, err := h.Repo.ListByDeviceForUser(c.Request.Context(), userID, deviceID, limit)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch telemetry"})
+		return
+	}
+	if data == nil {
+		data = []Telemetry{}
+	}
+	c.JSON(http.StatusOK, data)
+}
+
+// GetSummary returns aggregated telemetry summary for a device.
+// Query params: period (day|week|month, default: day)
+func (h *Handler) GetSummary(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	deviceID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid device id"})
+		return
+	}
+
+	period := c.DefaultQuery("period", "day")
+
+	summary, err := h.Repo.GetSummaryByDevice(c.Request.Context(), userID, deviceID, period)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch telemetry summary"})
+		return
+	}
+
+	c.JSON(http.StatusOK, summary)
+}
+
+// GetLatest returns the most recent telemetry reading for a device.
+func (h *Handler) GetLatest(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	deviceID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid device id"})
+		return
+	}
+
+	// First verify user owns the device
+	owns, err := h.Repo.UserOwnsDevice(c.Request.Context(), userID, deviceID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to verify device ownership"})
+		return
+	}
+	if !owns {
+		c.JSON(http.StatusForbidden, gin.H{"error": "device not found or not owned by user"})
+		return
+	}
+
+	telemetry, err := h.Repo.GetLatestByDevice(c.Request.Context(), deviceID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "no telemetry data found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, telemetry)
+}
+
+// Create adds a new telemetry record and updates device status.
 func (h *Handler) Create(c *gin.Context) {
 	userID, ok := getUserID(c)
 	if !ok {
@@ -112,6 +232,9 @@ func (h *Handler) Create(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create telemetry"})
 		return
 	}
+
+	// Update device last_seen and status to 'online'
+	_ = h.Repo.UpdateDeviceLastSeenAndStatus(c.Request.Context(), req.DeviceID)
 
 	t.ID = id
 	c.JSON(http.StatusCreated, t)

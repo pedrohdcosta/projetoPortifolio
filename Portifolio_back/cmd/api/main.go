@@ -60,6 +60,9 @@ func setupRouter(ctx context.Context, pool *pgxpool.Pool) *gin.Engine {
 		telemetryRepo := telemetry.NewRepo(&telemetryQuerier{wrapped})
 		telemetryHandler := telemetry.NewHandler(telemetryRepo)
 		telemetryHandler.RegisterRoutes(api)
+		
+		// Device-specific telemetry routes (/api/devices/:id/telemetry)
+		telemetryHandler.RegisterDeviceTelemetryRoutes(api.Group("/devices"))
 	}
 
 	// Configure static file serving for frontend SPA

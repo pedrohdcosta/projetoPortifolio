@@ -21,6 +21,20 @@ export interface TelemetryData {
   current?: number;
 }
 
+export interface TelemetrySummary {
+  device_id: number;
+  period: string;
+  start_time: string;
+  end_time: string;
+  total_records: number;
+  avg_power: number;
+  max_power: number;
+  min_power: number;
+  total_energy: number;
+  avg_voltage?: number;
+  avg_current?: number;
+}
+
 export interface CreateDeviceRequest {
   name: string;
   room?: string;
@@ -92,4 +106,33 @@ export async function createTelemetry(req: CreateTelemetryRequest): Promise<Tele
 
 export async function deleteTelemetry(id: number): Promise<void> {
   await api.delete(`/telemetry/${id}`);
+}
+
+// New API functions for device-telemetry integration
+
+// Get latest telemetry for all user's devices (one reading per device)
+export async function getLatestTelemetry(): Promise<TelemetryData[]> {
+  const { data } = await api.get("/telemetry/latest");
+  return data;
+}
+
+// Get telemetry for a specific device using the dedicated endpoint
+export async function getDeviceTelemetry(deviceId: number, limit = 100): Promise<TelemetryData[]> {
+  const { data } = await api.get(`/devices/${deviceId}/telemetry`, { params: { limit } });
+  return data;
+}
+
+// Get telemetry summary for a device (aggregated data)
+export async function getDeviceTelemetrySummary(
+  deviceId: number, 
+  period: 'day' | 'week' | 'month' = 'day'
+): Promise<TelemetrySummary> {
+  const { data } = await api.get(`/devices/${deviceId}/telemetry/summary`, { params: { period } });
+  return data;
+}
+
+// Get the latest telemetry reading for a specific device
+export async function getDeviceLatestTelemetry(deviceId: number): Promise<TelemetryData> {
+  const { data } = await api.get(`/devices/${deviceId}/telemetry/latest`);
+  return data;
 }
