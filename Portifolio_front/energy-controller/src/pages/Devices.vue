@@ -74,13 +74,22 @@
 
           <div class="row" style="justify-content: space-between; margin-top: auto;">
             <span class="text-muted small">ID: {{ d.id }}</span>
-            <button 
-              class="btn btn--outline" 
-              @click="remove(d.id)"
-              :disabled="loading"
-            >
-              Remover
-            </button>
+            <div class="row" style="gap: var(--sp-2);">
+              <button 
+                class="btn btn--outline" 
+                @click="toggleStatus(d.id)"
+                :disabled="loading"
+              >
+                {{ d.status === 'online' ? 'Desativar' : 'Ativar' }}
+              </button>
+              <button 
+                class="btn btn--outline" 
+                @click="remove(d.id)"
+                :disabled="loading"
+              >
+                Remover
+              </button>
+            </div>
           </div>
         </article>
       </section>
@@ -168,6 +177,25 @@ async function remove(id: number) {
   } catch (e: any) {
     error.value = e?.response?.data?.error || 
       'Erro ao remover dispositivo. Tente novamente.'
+  } finally {
+    loading.value = false
+  }
+}
+
+async function toggleStatus(id: number) {
+  if (loading.value) return
+
+  loading.value = true
+  error.value = ''
+
+  try {
+    const device = devices.value.find(d => d.id === id)
+    if (device) {
+      device.status = device.status === 'online' ? 'offline' : 'online'
+    }
+  } catch (e: any) {
+    error.value = e?.response?.data?.error || 
+      'Erro ao alterar status do dispositivo. Tente novamente.'
   } finally {
     loading.value = false
   }
