@@ -47,12 +47,34 @@
         </article>
       </section>
 
+      <!-- Period Filter -->
+      <section class="card filter-section">
+        <div class="filter-header">
+          <h3>Filtro de Período</h3>
+          <span class="badge">{{ filteredTelemetry.length }} leituras</span>
+        </div>
+        <div class="period-selector">
+          <button 
+            :class="['btn', 'btn--sm', selectedPeriod === '24h' ? 'btn--solid' : 'btn--outline']"
+            @click="changePeriod('24h')"
+          >Últimas 24h</button>
+          <button 
+            :class="['btn', 'btn--sm', selectedPeriod === 'month' ? 'btn--solid' : 'btn--outline']"
+            @click="changePeriod('month')"
+          >Este Mês</button>
+          <button 
+            :class="['btn', 'btn--sm', selectedPeriod === 'year' ? 'btn--solid' : 'btn--outline']"
+            @click="changePeriod('year')"
+          >Este Ano</button>
+        </div>
+      </section>
+
       <!-- Telemetry Chart -->
       <ConsumptionChart 
-        :labels="labels" 
-        :series="series" 
+        :labels="chartLabels" 
+        :series="chartSeries" 
         :loading="loadingTelemetry"
-        title="Consumo - Últimos 5 minutos"
+        :title="chartTitle"
       />
 
       <!-- Telemetry Table -->
@@ -72,11 +94,12 @@ import ConsumptionChart from '../components/ConsumptionChart.vue'
 import TelemetryTable, { type TelemetryData } from '../components/TelemetryTable.vue'
 import { listDevices, listTelemetry, type Device, type TelemetryData as ApiTelemetry } from '../api/devices'
 
-const series = ref<number[]>([])
-const labels = ref<string[]>([])
+type PeriodFilter = '24h' | 'month' | 'year'
+
 const currentPower = ref(0)
 const devices = ref<Device[]>([])
 const telemetryRaw = ref<ApiTelemetry[]>([])
+const selectedPeriod = ref<PeriodFilter>('24h')
 
 const loadingDevices = ref(false)
 const loadingTelemetry = ref(false)
@@ -86,17 +109,55 @@ const errorTelemetry = ref('')
 const estimatedKwh = computed(() => (currentPower.value / 1000).toFixed(3))
 const activeDevicesCount = computed(() => devices.value.filter(d => d.status === 'online').length)
 
-// Transform API telemetry data to table format - showing ALL readings
-const telemetryTableData = computed<TelemetryData[]>(() => {
-  // Create device lookup map for O(1) access - O(m)
-  const deviceLookup = new Map<number, Device>()
-  for (const d of devices.value) {
-    deviceLookup.set(d.id, d)
+// Chart title based on selected period
+const chartTitle = computed(() => {
+  switch (selectedPeriod.value) {
+    case '24h': return 'Consumo - Últimas 24 horas'
+    case 'month': return 'Consumo - Este Mês'
+    case 'year': return 'Consumo - Este Ano'
+    default: return 'Consumo'
   }
+})
+
+// Filter telemetry data based on selected period
+const filteredTelemetry = computed(() => {
+  const now = new Date()
   
-  // Map all telemetry readings to table format - O(n)
-  return telemetryRaw.value.map(t => {
-    const device = deviceLookup.get(t.device_id)
+  return telemetryRaw.value.filter(t => {
+    const timestamp = new Date(t.timestamp)
+    
+    switch (selectedPeriod.value) {
+      case '24h': {
+        const hoursAgo24 = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+        return timestamp >= hoursAgo24
+      }
+      case 'month': {
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+        return timestamp >= startOfMonth
+      }
+      case 'year': {
+        const startOfYear = new Date(now.getFullYear(), 0, 1)
+        return timestamp >= startOfYear
+      }
+      default:
+        return true
+    }
+  })
+})
+
+// Create device lookup map for O(1) access
+const deviceLookup = computed(() => {
+  const lookup = new Map<number, Device>()
+  for (const d of devices.value) {
+    lookup.set(d.id, d)
+  }
+  return lookup
+})
+
+// Transform filtered telemetry data to table format
+const telemetryTableData = computed<TelemetryData[]>(() => {
+  return filteredTelemetry.value.map(t => {
+    const device = deviceLookup.value.get(t.device_id)
     return {
       id: t.id,
       deviceName: device?.name || `Dispositivo ${t.device_id}`,
@@ -106,8 +167,40 @@ const telemetryTableData = computed<TelemetryData[]>(() => {
   })
 })
 
+// Sorted telemetry for chart (ascending by timestamp) - shared to avoid duplicate sorting
+const sortedTelemetryForChart = computed(() => {
+  return [...filteredTelemetry.value].sort((a, b) => 
+    new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+  )
+})
+
+// Generate chart data from sorted telemetry
+const chartSeries = computed(() => {
+  return sortedTelemetryForChart.value.map(t => t.power)
+})
+
+const chartLabels = computed(() => {
+  return sortedTelemetryForChart.value.map(t => {
+    const date = new Date(t.timestamp)
+    switch (selectedPeriod.value) {
+      case '24h':
+        return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+      case 'month':
+        return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+      case 'year':
+        return date.toLocaleDateString('pt-BR', { month: 'short' })
+      default:
+        return date.toLocaleTimeString('pt-BR')
+    }
+  })
+})
+
 let pollingTimer: number | undefined
 let isPolling = false
+
+function changePeriod(period: PeriodFilter) {
+  selectedPeriod.value = period
+}
 
 async function loadDevices() {
   if (loadingDevices.value) return
@@ -132,12 +225,12 @@ async function loadTelemetry() {
   errorTelemetry.value = ''
   
   try {
-    const data = await listTelemetry(undefined, 100)
+    // Load more data to support filtering by month/year
+    const data = await listTelemetry(undefined, 1000)
     telemetryRaw.value = data
     
-    // Calculate current total power
+    // Calculate current total power from most recent readings
     if (data.length > 0) {
-      // Sum the most recent reading from each device
       const deviceLatest = new Map<number, number>()
       for (const t of data) {
         if (!deviceLatest.has(t.device_id)) {
@@ -145,16 +238,6 @@ async function loadTelemetry() {
         }
       }
       currentPower.value = Array.from(deviceLatest.values()).reduce((sum, p) => sum + p, 0)
-    }
-    
-    // Update chart series with latest power
-    series.value.push(currentPower.value)
-    labels.value.push(new Date().toLocaleTimeString('pt-BR'))
-    
-    // Keep last 300 points (~5 min at 1 sample/sec)
-    if (series.value.length > 300) {
-      series.value.shift()
-      labels.value.shift()
     }
   } catch (e: any) {
     errorTelemetry.value = e?.response?.data?.error || 
@@ -172,7 +255,7 @@ function startPolling() {
     if (!loadingTelemetry.value) {
       loadTelemetry()
     }
-  }, 5000) // Poll every 5 seconds
+  }, 30000) // Poll every 30 seconds (less frequent since we're loading more data)
 }
 
 function stopPolling() {
@@ -212,5 +295,33 @@ onUnmounted(() => {
   color: var(--warn, #ff6384);
   margin: 0;
   text-align: center;
+}
+
+.filter-section {
+  padding: var(--sp-4, 16px);
+}
+
+.filter-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--sp-3, 12px);
+}
+
+.filter-header h3 {
+  margin: 0;
+  font-size: var(--fs-base, 1rem);
+  font-weight: 600;
+}
+
+.period-selector {
+  display: flex;
+  gap: var(--sp-2, 8px);
+  flex-wrap: wrap;
+}
+
+.btn--sm {
+  padding: 8px 16px;
+  font-size: 0.875rem;
 }
 </style>
