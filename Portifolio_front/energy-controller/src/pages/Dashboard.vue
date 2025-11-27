@@ -72,7 +72,8 @@
       <!-- Telemetry Chart -->
       <ConsumptionChart 
         :labels="chartLabels" 
-        :series="chartSeries" 
+        :series="chartSeries"
+        :dataPoints="chartDataPoints"
         :loading="loadingTelemetry"
         :title="chartTitle"
       />
@@ -177,6 +178,28 @@ const sortedTelemetryForChart = computed(() => {
 // Generate chart data from sorted telemetry
 const chartSeries = computed(() => {
   return sortedTelemetryForChart.value.map(t => t.power)
+})
+
+// Generate detailed data points for chart tooltips
+const chartDataPoints = computed(() => {
+  return sortedTelemetryForChart.value.map(t => {
+    const device = deviceLookup.value.get(t.device_id)
+    const date = new Date(t.timestamp)
+    return {
+      power: t.power,
+      deviceName: device?.name || `Dispositivo ${t.device_id}`,
+      deviceRoom: device?.room || 'Sem cômodo',
+      timestamp: t.timestamp,
+      formattedTime: date.toLocaleString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      }),
+      voltage: t.voltage,
+      current: t.current
+    }
+  })
 })
 
 const chartLabels = computed(() => {
