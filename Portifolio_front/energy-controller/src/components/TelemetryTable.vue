@@ -15,10 +15,10 @@
         </button>
       </div>
       
-      <div v-if="data.length === 0" class="empty-state">
+      <div v-if="totalItems === 0" class="empty-state">
         <p class="text-muted">Nenhum dado de telemetria disponível.</p>
       </div>
-      
+
       <table v-else>
         <thead>
           <tr>
@@ -28,18 +28,37 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="item in data" :key="item.id">
+          <tr v-for="item in paginatedData" :key="item.id">
             <td>{{ item.deviceName }}</td>
             <td>{{ item.power.toFixed(2) }}</td>
             <td>{{ formatTimestamp(item.timestamp) }}</td>
           </tr>
         </tbody>
       </table>
+
+      <div class="pagination" v-if="totalPages > 1">
+        <button class="btn btn--outline btn--sm" @click="goPrev" :disabled="currentPage === 1">Anterior</button>
+
+        <div class="page-numbers">
+          <button
+            v-for="p in totalPages"
+            :key="p"
+            class="btn btn--sm page-btn"
+            @click="changePage(p)"
+            :class="{ active: currentPage === p }"
+          >
+            {{ p }}
+          </button>
+        </div>
+
+        <button class="btn btn--outline btn--sm" @click="goNext" :disabled="currentPage === totalPages">Próximo</button>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { ref, computed, watch } from 'vue'
 import SkeletonCard from './SkeletonCard.vue'
 
 export interface TelemetryData {
@@ -49,14 +68,40 @@ export interface TelemetryData {
   timestamp: string
 }
 
-defineProps<{
+const props = defineProps<{
   data: TelemetryData[]
   loading?: boolean
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   refresh: []
 }>()
+
+// Pagination
+const pageSize = 10
+const currentPage = ref(1)
+const totalItems = computed(() => (props.data ?? []).length)
+const totalPages = computed(() => Math.max(1, Math.ceil(totalItems.value / pageSize)))
+
+const paginatedData = computed(() => {
+  const start = (currentPage.value - 1) * pageSize
+  return (props.data || []).slice(start, start + pageSize)
+})
+
+function changePage(p: number) {
+  if (p >= 1 && p <= totalPages.value) currentPage.value = p
+}
+
+function goPrev() {
+  if (currentPage.value > 1) currentPage.value--
+}
+
+function goNext() {
+  if (currentPage.value < totalPages.value) currentPage.value++
+}
+
+// Reset page when data changes
+watch(() => props.data, () => { currentPage.value = 1 })
 
 function formatTimestamp(ts: string): string {
   return new Date(ts).toLocaleString('pt-BR')
@@ -118,5 +163,32 @@ td {
 .empty-state {
   padding: var(--sp-6, 24px);
   text-align: center;
+}
+
+.pagination {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.page-numbers {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.page-btn {
+  min-width: 36px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: transparent;
+  border: 1px solid var(--border, rgba(255,255,255,0.06));
+}
+
+.page-btn.active {
+  background: var(--accent, rgba(0, 123, 255, 0.12));
+  border-color: var(--accent, rgba(0, 123, 255, 0.25));
 }
 </style>
