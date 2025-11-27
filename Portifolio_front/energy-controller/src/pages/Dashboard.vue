@@ -86,7 +86,7 @@ const errorTelemetry = ref('')
 const estimatedKwh = computed(() => (currentPower.value / 1000).toFixed(3))
 const activeDevicesCount = computed(() => devices.value.filter(d => d.status === 'online').length)
 
-// Transform API telemetry data to table format
+// Transform API telemetry data to table format - showing ALL readings
 const telemetryTableData = computed<TelemetryData[]>(() => {
   // Create device lookup map for O(1) access - O(m)
   const deviceLookup = new Map<number, Device>()
@@ -94,22 +94,16 @@ const telemetryTableData = computed<TelemetryData[]>(() => {
     deviceLookup.set(d.id, d)
   }
   
-  // Group by device and get latest reading per device - O(n)
-  const deviceMap = new Map<number, { telemetry: ApiTelemetry; device?: Device }>()
-  
-  for (const t of telemetryRaw.value) {
-    if (!deviceMap.has(t.device_id)) {
-      const device = deviceLookup.get(t.device_id)
-      deviceMap.set(t.device_id, { telemetry: t, device })
+  // Map all telemetry readings to table format - O(n)
+  return telemetryRaw.value.map(t => {
+    const device = deviceLookup.get(t.device_id)
+    return {
+      id: t.id,
+      deviceName: device?.name || `Dispositivo ${t.device_id}`,
+      power: t.power,
+      timestamp: t.timestamp
     }
-  }
-  
-  return Array.from(deviceMap.values()).map(({ telemetry, device }) => ({
-    id: telemetry.id,
-    deviceName: device?.name || `Dispositivo ${telemetry.device_id}`,
-    power: telemetry.power,
-    timestamp: telemetry.timestamp
-  }))
+  })
 })
 
 let pollingTimer: number | undefined
