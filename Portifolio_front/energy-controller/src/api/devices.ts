@@ -7,6 +7,7 @@ export interface Device {
   room?: string;
   type?: string;
   status?: "online" | "offline";
+  power_state?: boolean;
   metadata?: string;
   created_at?: string;
   last_seen?: string;
@@ -47,6 +48,7 @@ export interface UpdateDeviceRequest {
   room?: string;
   type?: string;
   status?: string;
+  power_state?: boolean;
   metadata?: string;
 }
 
@@ -80,6 +82,12 @@ export async function updateDevice(id: number, req: UpdateDeviceRequest): Promis
 
 export async function deleteDevice(id: number): Promise<void> {
   await api.delete(`/devices/${id}`);
+}
+
+// Toggle device power state (on/off)
+export async function toggleDevice(id: number): Promise<Device> {
+  const { data } = await api.post(`/devices/${id}/toggle`);
+  return data;
 }
 
 // Telemetry API functions

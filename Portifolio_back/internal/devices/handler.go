@@ -25,6 +25,7 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	g.POST("", h.Create)
 	g.PUT("/:id", h.Update)
 	g.DELETE("/:id", h.Delete)
+	g.POST("/:id/toggle", h.Toggle)
 }
 
 // List returns all devices for the authenticated user.
@@ -167,6 +168,57 @@ func (h *Handler) Delete(c *gin.Context) {
 	}
 
 	c.Status(http.StatusNoContent)
+}
+
+// Toggle switches device power state (on/off).
+func (h *Handler) Toggle(c *gin.Context) {
+	userID, ok := getUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	idStr := c.Param("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+
+	// Get current device
+	device, err := h.Repo.GetByID(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "device not found"})
+		return
+	}
+
+	// Ensure user owns this device
+	if device.UserID != userID {
+		c.JSON(http.StatusNotFound, gin.H{"error": "device not found"})
+		return
+	}
+
+	// Toggle power state
+	var newPowerState bool
+	if device.PowerState == nil || !*device.PowerState {
+		newPowerState = true
+	} else {
+		newPowerState = false
+	}
+
+	if err := h.Repo.UpdatePowerState(c.Request.Context(), id, newPowerState); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to toggle device"})
+		return
+	}
+
+	// Fetch updated device
+	device, err = h.Repo.GetByID(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch updated device"})
+		return
+	}
+
+	c.JSON(http.StatusOK, device)
 }
 
 // getUserID extracts user ID from Gin context (set by auth middleware).

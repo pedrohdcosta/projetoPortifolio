@@ -61,9 +61,14 @@
         >
           <div class="row" style="justify-content: space-between;">
             <strong style="font-size: var(--fs-lg);">{{ d.name }}</strong>
-            <span :class="['badge', d.status === 'online' ? 'badge--success' : '']">
-              {{ d.status === 'online' ? '🟢 Online' : '⚫ Offline' }}
-            </span>
+            <div class="row" style="gap: var(--sp-2);">
+              <span :class="['badge', d.power_state ? 'badge--power-on' : 'badge--power-off']">
+                {{ d.power_state ? '⚡ Ligado' : '💤 Desligado' }}
+              </span>
+              <span :class="['badge', d.status === 'online' ? 'badge--success' : '']">
+                {{ d.status === 'online' ? '🟢 Online' : '⚫ Offline' }}
+              </span>
+            </div>
           </div>
 
           <div class="row" style="gap: var(--sp-2); flex-wrap: wrap;">
@@ -71,11 +76,25 @@
             <span class="badge">{{ getDeviceTypeLabel(d.type) }}</span>
           </div>
 
+          <!-- Power Toggle -->
+          <div class="power-toggle-section">
+            <button 
+              :class="['power-toggle-btn', d.power_state ? 'power-on' : 'power-off']"
+              @click="toggle(d.id)"
+              :disabled="toggling === d.id"
+              :title="d.power_state ? 'Desligar dispositivo' : 'Ligar dispositivo'"
+            >
+              <span v-if="toggling === d.id" class="toggle-loading">⏳</span>
+              <span v-else class="toggle-icon">{{ d.power_state ? '🔴' : '🟢' }}</span>
+              <span class="toggle-text">{{ d.power_state ? 'Desligar' : 'Ligar' }}</span>
+            </button>
+          </div>
+
           <!-- Telemetry Info -->
           <div class="telemetry-info">
             <div class="telemetry-power">
               <span class="power-label">Potência Atual</span>
-              <span class="power-value" :class="{ 'power-active': d.latestPower !== undefined }">
+              <span class="power-value" :class="{ 'power-active': d.latestPower !== undefined && d.power_state }">
                 {{ d.latestPower !== undefined ? d.latestPower.toFixed(1) : '--' }} W
               </span>
             </div>
@@ -223,7 +242,8 @@ import LoadingSpinner from '../components/LoadingSpinner.vue'
 import { 
   listDevices, 
   createDevice, 
-  deleteDevice, 
+  deleteDevice,
+  toggleDevice,
   getLatestTelemetry,
   getDeviceTelemetry,
   getDeviceTelemetrySummary,
@@ -262,6 +282,7 @@ const simulating = ref<number | null>(null) // deviceId being simulated
 const generatingSingle = ref(false)
 const generatingBulk = ref(false)
 const simulatorMessage = ref('')
+const toggling = ref<number | null>(null) // deviceId being toggled
 
 // Computed property for displayed telemetry with configurable limit
 const displayedTelemetry = computed(() => selectedTelemetry.value.slice(0, TELEMETRY_DISPLAY_LIMIT))
@@ -370,6 +391,28 @@ async function remove(id: number) {
       'Erro ao remover dispositivo. Tente novamente.'
   } finally {
     loading.value = false
+  }
+}
+
+async function toggle(deviceId: number) {
+  if (toggling.value !== null) return
+  
+  toggling.value = deviceId
+  error.value = ''
+  
+  try {
+    const updatedDevice = await toggleDevice(deviceId)
+    
+    // Update device in the list
+    const index = devices.value.findIndex(d => d.id === deviceId)
+    if (index >= 0) {
+      devices.value[index] = updatedDevice
+    }
+  } catch (e: any) {
+    error.value = e?.response?.data?.error || 
+      'Erro ao alternar estado do dispositivo. Tente novamente.'
+  } finally {
+    toggling.value = null
   }
 }
 
@@ -567,6 +610,16 @@ onMounted(() => {
   color: #43a047;
 }
 
+.badge--power-on {
+  background: rgba(255, 193, 7, 0.2);
+  color: #ffc107;
+}
+
+.badge--power-off {
+  background: rgba(158, 158, 158, 0.2);
+  color: #9e9e9e;
+}
+
 select.input {
   min-width: 150px;
 }
@@ -574,6 +627,65 @@ select.input {
 .btn--sm {
   padding: 6px 12px;
   font-size: 0.85rem;
+}
+
+/* Power Toggle Section */
+.power-toggle-section {
+  display: flex;
+  justify-content: center;
+  padding: var(--sp-2) 0;
+}
+
+.power-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-5);
+  border: 2px solid;
+  border-radius: 50px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background: transparent;
+}
+
+.power-toggle-btn.power-on {
+  border-color: #f44336;
+  color: #f44336;
+}
+
+.power-toggle-btn.power-on:hover:not(:disabled) {
+  background: rgba(244, 67, 54, 0.15);
+  box-shadow: 0 0 15px rgba(244, 67, 54, 0.3);
+}
+
+.power-toggle-btn.power-off {
+  border-color: #4caf50;
+  color: #4caf50;
+}
+
+.power-toggle-btn.power-off:hover:not(:disabled) {
+  background: rgba(76, 175, 80, 0.15);
+  box-shadow: 0 0 15px rgba(76, 175, 80, 0.3);
+}
+
+.power-toggle-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.toggle-icon {
+  font-size: 1.2rem;
+}
+
+.toggle-loading {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 /* Telemetry Info */
