@@ -18,6 +18,7 @@
       <aside class="side card">
         <RouterLink to="/app/dashboard" class="nav" active-class="active">📊 Dashboard</RouterLink>
         <RouterLink to="/app/devices"  class="nav" active-class="active">🔌 Dispositivos</RouterLink>
+        <RouterLink to="/app/thresholds"  class="nav" active-class="active">⚙️ Limiares</RouterLink>
         <RouterLink to="/app/profile"  class="nav" active-class="active">👤 Perfil</RouterLink>
       </aside>
 
@@ -34,13 +35,19 @@
 </template>
 
 <script setup lang="ts">
-import { RouterLink, RouterView } from 'vue-router'
+import { RouterLink, RouterView, useRouter } from 'vue-router'
 import { computed } from 'vue'
 import { useAuth } from './stores/auth'
 
 const auth = useAuth()
+const router = useRouter()
 const isAuth = computed(() => auth.isAuthenticated)
-function logout() { auth.logout() }
+
+function logout() {
+  auth.logout()
+  // navegar para /login para forçar o router a renderizar a tela de autenticação
+  router.push('/login').catch(() => {})
+}
 </script>
 
 <style scoped>

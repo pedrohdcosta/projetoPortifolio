@@ -3,6 +3,7 @@
     <router-link to="/app/dashboard">Dashboard</router-link>
     <router-link to="/app/devices">Dispositivos</router-link>
     <router-link to="/app/profile">Perfil</router-link>
+    <router-link to="/app/thresholds">Limiares</router-link>
   </aside>
 </template>
 <script setup lang="ts"></script>

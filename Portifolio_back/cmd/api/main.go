@@ -5,16 +5,20 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	"github.com/pedrohdcosta/projetoPortifolio/Portifolio_back/internal/auth"
 	"github.com/pedrohdcosta/projetoPortifolio/Portifolio_back/internal/db"
+	"github.com/pedrohdcosta/projetoPortifolio/Portifolio_back/internal/devices"
+	"github.com/pedrohdcosta/projetoPortifolio/Portifolio_back/internal/simulator"
+	"github.com/pedrohdcosta/projetoPortifolio/Portifolio_back/internal/telemetry"
 )
 
 func main() {
-	_ = godotenv.Load(".env")
+	_ = godotenv.Load("../../.env.example")
 	ctx := context.Background()
 	pool, err := db.NewPool(ctx)
 	if err != nil {
@@ -39,8 +43,34 @@ func setupRouter(ctx context.Context, pool *pgxpool.Pool) *gin.Engine {
 	// Database schema initialization
 	ensureSchema(ctx, pool)
 
+	// Wrap pool for interfaces
+	wrapped := wrap(pool)
+
 	// API routes
-	auth.RegisterRoutes(r, wrap(pool))
+	auth.RegisterRoutes(r, wrapped)
+
+	// Protected API routes (require authentication)
+	api := r.Group("/api")
+	api.Use(auth.AuthMiddleware())
+	{
+		// Devices CRUD
+		devicesRepo := devices.NewRepo(&devicesQuerier{wrapped})
+		devicesHandler := devices.NewHandler(devicesRepo)
+		devicesHandler.RegisterRoutes(api)
+
+		// Telemetry CRUD
+		telemetryRepo := telemetry.NewRepo(&telemetryQuerier{wrapped})
+		telemetryHandler := telemetry.NewHandler(telemetryRepo)
+		telemetryHandler.RegisterRoutes(api)
+		
+		// Device-specific telemetry routes (/api/devices/:id/telemetry)
+		telemetryHandler.RegisterDeviceTelemetryRoutes(api.Group("/devices"))
+
+		// Simulator for generating test telemetry data
+		simulatorCreator := &telemetryCreatorAdapter{repo: telemetryRepo}
+		simulatorHandler := simulator.NewHandler(simulatorCreator)
+		simulatorHandler.RegisterRoutes(api)
+	}
 
 	// Configure static file serving for frontend SPA
 	configureStaticFiles(r)
@@ -113,21 +143,118 @@ func getPort() string {
 
 type pgxWrap struct{ *pgxpool.Pool }
 
-func wrap(p *pgxpool.Pool) pgxWrap { return pgxWrap{p} }
-func (w pgxWrap) Exec(ctx context.Context, sql string, args ...any) error {
+func wrap(p *pgxpool.Pool) *pgxWrap { return &pgxWrap{p} }
+func (w *pgxWrap) Exec(ctx context.Context, sql string, args ...any) error {
 	_, err := w.Pool.Exec(ctx, sql, args...)
 	return err
 }
-func (w pgxWrap) QueryRow(ctx context.Context, sql string, args ...any) interface{ Scan(dest ...any) error } {
+func (w *pgxWrap) QueryRow(ctx context.Context, sql string, args ...any) interface{ Scan(dest ...any) error } {
 	return w.Pool.QueryRow(ctx, sql, args...)
 }
 
+// pgxRows wraps pgx.Rows to satisfy various Rows interfaces.
+type pgxRows struct {
+	rows interface {
+		Next() bool
+		Scan(dest ...any) error
+		Close()
+		Err() error
+	}
+}
+
+func (r *pgxRows) Next() bool            { return r.rows.Next() }
+func (r *pgxRows) Scan(dest ...any) error { return r.rows.Scan(dest...) }
+func (r *pgxRows) Close()                { r.rows.Close() }
+func (r *pgxRows) Err() error            { return r.rows.Err() }
+
+// Query returns a Rows-compatible result for devices package.
+func (w *pgxWrap) Query(ctx context.Context, sql string, args ...any) (devices.Rows, error) {
+	r, err := w.Pool.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, err
+	}
+	return &pgxRows{rows: r}, nil
+}
+
+// devicesQuerier adapts pgxWrap to devices.RowsQuerier interface.
+type devicesQuerier struct{ *pgxWrap }
+
+func (d *devicesQuerier) Query(ctx context.Context, sql string, args ...any) (devices.Rows, error) {
+	return d.pgxWrap.Query(ctx, sql, args...)
+}
+
+// telemetryQuerier adapts pgxWrap to telemetry.RowsQuerier interface.
+type telemetryQuerier struct{ *pgxWrap }
+
+func (t *telemetryQuerier) Query(ctx context.Context, sql string, args ...any) (telemetry.Rows, error) {
+	r, err := t.pgxWrap.Pool.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, err
+	}
+	return &pgxRows{rows: r}, nil
+}
+
+// telemetryCreatorAdapter adapts telemetry.Repo to simulator.TelemetryCreator interface.
+type telemetryCreatorAdapter struct {
+	repo *telemetry.Repo
+}
+
+func (a *telemetryCreatorAdapter) CreateTelemetry(deviceID int64, power, voltage, current float64, timestamp time.Time) (int64, error) {
+	t := &telemetry.Telemetry{
+		DeviceID:  deviceID,
+		Power:     power,
+		Voltage:   &voltage,
+		Current:   &current,
+		Timestamp: timestamp,
+	}
+	return a.repo.Create(context.Background(), t)
+}
+
+func (a *telemetryCreatorAdapter) UserOwnsDevice(userID, deviceID int64) (bool, error) {
+	return a.repo.UserOwnsDevice(context.Background(), userID, deviceID)
+}
+
+func (a *telemetryCreatorAdapter) UpdateDeviceStatus(deviceID int64) error {
+	return a.repo.UpdateDeviceLastSeenAndStatus(context.Background(), deviceID)
+}
+
 func ensureSchema(ctx context.Context, p *pgxpool.Pool) {
-	_, _ = p.Exec(ctx, `create table if not exists app_user(
-	id bigserial primary key,
-	name text not null,
-	email text unique not null,
-	password_hash text not null,
-	created_at timestamptz default now()
+	// Create users table
+	_, _ = p.Exec(ctx, `CREATE TABLE IF NOT EXISTS app_user(
+		id BIGSERIAL PRIMARY KEY,
+		name TEXT NOT NULL,
+		email TEXT UNIQUE NOT NULL,
+		password_hash TEXT NOT NULL,
+		created_at TIMESTAMPTZ DEFAULT NOW()
 	)`)
+
+	// Create devices table
+	_, _ = p.Exec(ctx, `CREATE TABLE IF NOT EXISTS device(
+		id BIGSERIAL PRIMARY KEY,
+		user_id BIGINT NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
+		name TEXT NOT NULL,
+		room TEXT,
+		type TEXT DEFAULT 'smart_plug',
+		status TEXT DEFAULT 'offline',
+		metadata TEXT,
+		created_at TIMESTAMPTZ DEFAULT NOW(),
+		last_seen TIMESTAMPTZ
+	)`)
+
+	// Create index on user_id for faster device lookups
+	_, _ = p.Exec(ctx, `CREATE INDEX IF NOT EXISTS idx_device_user_id ON device(user_id)`)
+
+	// Create telemetry table
+	_, _ = p.Exec(ctx, `CREATE TABLE IF NOT EXISTS telemetry(
+		id BIGSERIAL PRIMARY KEY,
+		device_id BIGINT NOT NULL REFERENCES device(id) ON DELETE CASCADE,
+		power DOUBLE PRECISION NOT NULL,
+		voltage DOUBLE PRECISION,
+		current DOUBLE PRECISION,
+		timestamp TIMESTAMPTZ DEFAULT NOW()
+	)`)
+
+	// Create index on device_id and timestamp for faster telemetry queries
+	_, _ = p.Exec(ctx, `CREATE INDEX IF NOT EXISTS idx_telemetry_device_id ON telemetry(device_id)`)
+	_, _ = p.Exec(ctx, `CREATE INDEX IF NOT EXISTS idx_telemetry_timestamp ON telemetry(timestamp DESC)`)
 }
