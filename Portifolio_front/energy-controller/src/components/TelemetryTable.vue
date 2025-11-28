@@ -24,6 +24,7 @@
           <tr>
             <th>Dispositivo</th>
             <th>Potência (W)</th>
+            <th>Status</th>
             <th>Timestamp</th>
           </tr>
         </thead>
@@ -31,6 +32,11 @@
           <tr v-for="item in paginatedData" :key="item.id">
             <td>{{ item.deviceName }}</td>
             <td>{{ item.power.toFixed(2) }}</td>
+            <td>
+              <span :class="['status-badge', statusClass(item.power)]">
+                {{ statusLabel(item.power) }}
+              </span>
+            </td>
             <td>{{ formatTimestamp(item.timestamp) }}</td>
           </tr>
         </tbody>
@@ -68,10 +74,17 @@ export interface TelemetryData {
   timestamp: string
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   data: TelemetryData[]
   loading?: boolean
-}>()
+  // thresholds in Watts
+  warningThreshold?: number
+  dangerThreshold?: number
+}>(), {
+  loading: false,
+  warningThreshold: 100,
+  dangerThreshold: 500,
+})
 
 const emit = defineEmits<{
   refresh: []
@@ -105,6 +118,26 @@ watch(() => props.data, () => { currentPage.value = 1 })
 
 function formatTimestamp(ts: string): string {
   return new Date(ts).toLocaleString('pt-BR')
+}
+
+// Health/status evaluation
+function statusLevel(power: number): 'ok' | 'warning' | 'danger' {
+  const p = Number(power)
+  if (Number.isNaN(p)) return 'ok'
+  if (p >= (props.dangerThreshold as number)) return 'danger'
+  if (p >= (props.warningThreshold as number)) return 'warning'
+  return 'ok'
+}
+
+function statusLabel(power: number): string {
+  const lvl = statusLevel(power)
+  if (lvl === 'ok') return 'OK'
+  if (lvl === 'warning') return 'Atenção'
+  return 'Perigo'
+}
+
+function statusClass(power: number): string {
+  return statusLevel(power)
 }
 </script>
 
@@ -190,5 +223,31 @@ td {
 .page-btn.active {
   background: var(--accent, rgba(0, 123, 255, 0.12));
   border-color: var(--accent, rgba(0, 123, 255, 0.25));
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.75rem;
+}
+
+.status-badge.ok {
+  color: var(--ok, #1f8a3d);
+  background: rgba(31,138,61,0.08);
+  border: 1px solid rgba(31,138,61,0.12);
+}
+
+.status-badge.warning {
+  color: var(--warning, #b36b00);
+  background: rgba(179,107,0,0.08);
+  border: 1px solid rgba(179,107,0,0.12);
+}
+
+.status-badge.danger {
+  color: var(--danger, #c92a2a);
+  background: rgba(201,42,42,0.08);
+  border: 1px solid rgba(201,42,42,0.12);
 }
 </style>

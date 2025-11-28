@@ -4,6 +4,7 @@ import Register from '../pages/Register.vue'
 import Dashboard from '../pages/Dashboard.vue'
 import Devices from '../pages/Devices.vue'
 import Profile from '../pages/Profile.vue'
+import Thresholds from '../pages/Thresholds.vue'
 import { useAuth } from '../stores/auth'
 
 const routes = [
@@ -15,6 +16,7 @@ const routes = [
         children: [
             {path: 'dashboard', component: Dashboard},
             {path: 'devices', component: Devices},
+            {path: 'thresholds', component: Thresholds},
             {path: 'profile', component: Profile}
         ],
         beforeEnter: () => { const a = useAuth(); return a.isAuthenticated ? true: '/login' }

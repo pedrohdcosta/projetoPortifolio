@@ -18,6 +18,7 @@
       <aside class="side card">
         <RouterLink to="/app/dashboard" class="nav" active-class="active">📊 Dashboard</RouterLink>
         <RouterLink to="/app/devices"  class="nav" active-class="active">🔌 Dispositivos</RouterLink>
+        <RouterLink to="/app/thresholds"  class="nav" active-class="active">⚙️ Limiares</RouterLink>
         <RouterLink to="/app/profile"  class="nav" active-class="active">👤 Perfil</RouterLink>
       </aside>
 
