@@ -91,9 +91,14 @@
           <div class="telemetry-info">
             <div class="telemetry-power">
               <span class="power-label">Potência Atual</span>
-              <span class="power-value" :class="{ 'power-active': d.latestPower !== undefined && d.status === 'online' }">
-                {{ d.latestPower !== undefined ? d.latestPower.toFixed(1) : '--' }} W
-              </span>
+              <div style="display: flex; gap: 12px; align-items: center;">
+                <span class="power-value" :class="{ 'power-active': d.latestPower !== undefined && d.status === 'online' }">
+                  {{ d.latestPower !== undefined ? d.latestPower.toFixed(1) : '--' }} W
+                </span>
+                <span :class="['status-badge', consumptionStatusClass(d.latestPower, d.id)]">
+                  {{ consumptionStatusLabel(d.latestPower, d.id) }}
+                </span>
+              </div>
             </div>
             <div v-if="d.last_seen" class="last-seen">
               <span class="text-muted small">Última leitura: {{ formatLastSeen(d.last_seen) }}</span>
@@ -106,11 +111,26 @@
               <button 
                 class="btn btn--outline btn--sm btn--simulate" 
                 @click="generateReading(d.id)"
-                :disabled="loading || simulating === d.id"
+                :disabled="!isSimulationEnabled(d.id) || loading || simulating === d.id"
                 title="Gerar leitura simulada"
               >
                 <span v-if="simulating === d.id">⏳</span>
                 <span v-else>⚡ Simular</span>
+              </button>
+              <button
+                class="btn btn--outline btn--sm"
+                :class="{ 'btn--solid': isSimulationEnabled(d.id) }"
+                @click.prevent="toggleSimulation(d.id)"
+                title="Alternar modo: simulador / API"
+              >
+                {{ isSimulationEnabled(d.id) ? 'Modo: Simulado' : 'Modo: API' }}
+              </button>
+              <button
+                class="btn btn--outline btn--sm"
+                @click.prevent="openTapoConfig(d)"
+                title="Configurar credenciais TAPO"
+              >
+                ⚙️ Config TAPO
               </button>
               <button 
                 class="btn btn--outline btn--sm" 
@@ -230,16 +250,44 @@
         </div>
       </div>
     </div>
+
+    <!-- TAPO Config Modal -->
+    <div v-if="editingTapoDeviceId !== null" class="modal-overlay" @click.self="cancelTapoConfig">
+      <div class="modal-content card">
+        <div class="modal-header">
+          <h3>Configurar TAPO - Dispositivo {{ editingTapoDeviceId }}</h3>
+          <button class="btn btn--outline btn--sm" @click="cancelTapoConfig">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="row" style="gap:12px; flex-wrap:wrap;">
+            <label class="text-muted">IP</label>
+            <input class="input" v-model="tapoIp" placeholder="192.168.1.10" />
+            <label class="text-muted">Username</label>
+            <input class="input" v-model="tapoUser" placeholder="tapo email" />
+            <label class="text-muted">Password</label>
+            <input class="input" v-model="tapoPassword" type="password" placeholder="password" />
+          </div>
+          <p class="text-muted small">Atenção: as credenciais são salvas em `device.metadata` como JSON. Para produção considere um armazenamento seguro.</p>
+          <div style="display:flex; gap:8px; margin-top:12px;">
+            <button class="btn btn--solid" @click="saveTapoConfig" :disabled="savingTapo">{{ savingTapo ? 'Salvando...' : 'Salvar' }}</button>
+            <button class="btn btn--outline" @click="cancelTapoConfig">Cancelar</button>
+          </div>
+          <div v-if="tapoError" style="color:#c92a2a; margin-top:8px">{{ tapoError }}</div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, onMounted, reactive } from 'vue'
+import { getThresholds } from '../utils/thresholds'
 import LoadingSpinner from '../components/LoadingSpinner.vue'
 import { 
   listDevices, 
   createDevice, 
   deleteDevice,
+  updateDevice,
   toggleDevice,
   getLatestTelemetry,
   getDeviceTelemetry,
@@ -250,9 +298,14 @@ import {
   type TelemetryData,
   type TelemetrySummary
 } from '../api/devices'
+import { getAllSimulationModes, setSimulationMode, toggleSimulationMode } from '../utils/simulationMode'
 
 // Configuration constants
 const TELEMETRY_DISPLAY_LIMIT = 10
+
+// Health thresholds (Watts) - can be tuned
+const WARNING_THRESHOLD = 100
+const DANGER_THRESHOLD = 500
 
 interface DeviceWithTelemetry extends Device {
   latestPower?: number;
@@ -280,6 +333,13 @@ const generatingSingle = ref(false)
 const generatingBulk = ref(false)
 const simulatorMessage = ref('')
 const toggling = ref<number | null>(null) // deviceId being toggled
+// TAPO config modal state
+const editingTapoDeviceId = ref<number | null>(null)
+const tapoIp = ref('')
+const tapoUser = ref('')
+const tapoPassword = ref('')
+const savingTapo = ref(false)
+const tapoError = ref('')
 
 // Computed property for displayed telemetry with configurable limit
 const displayedTelemetry = computed(() => selectedTelemetry.value.slice(0, TELEMETRY_DISPLAY_LIMIT))
@@ -298,6 +358,56 @@ const devicesWithTelemetry = computed<DeviceWithTelemetry[]>(() => {
     latestPower: telemetryMap.get(d.id)
   }))
 })
+
+// local map of simulation modes for UI responsiveness
+const simulationModes = reactive<Record<number, boolean>>({})
+
+function isSimulationEnabled(deviceId: number): boolean {
+  return !!simulationModes[deviceId]
+}
+
+function setSimulationForDevice(deviceId: number, enabled: boolean) {
+  simulationModes[deviceId] = !!enabled
+  setSimulationMode(deviceId, !!enabled)
+}
+
+function toggleSimulation(deviceId: number) {
+  const newVal = toggleSimulationMode(deviceId)
+  simulationModes[deviceId] = !!newVal
+}
+
+function consumptionStatusLevel(power?: number, deviceId?: number): 'ok' | 'warning' | 'danger' | 'unknown' {
+  if (power === undefined || power === null) return 'unknown'
+  const p = Number(power)
+  if (Number.isNaN(p)) return 'unknown'
+
+  // check per-device thresholds first
+  if (deviceId !== undefined && deviceId !== null) {
+    const t = getThresholds(deviceId)
+    if (t) {
+      if (p >= t.danger) return 'danger'
+      if (p >= t.warning) return 'warning'
+      return 'ok'
+    }
+  }
+
+  // fallback to page-level defaults
+  if (p >= DANGER_THRESHOLD) return 'danger'
+  if (p >= WARNING_THRESHOLD) return 'warning'
+  return 'ok'
+}
+
+function consumptionStatusLabel(power?: number, deviceId?: number): string {
+  const lvl = consumptionStatusLevel(power, deviceId)
+  if (lvl === 'ok') return 'OK'
+  if (lvl === 'warning') return 'Atenção'
+  if (lvl === 'danger') return 'Perigo'
+  return '--'
+}
+
+function consumptionStatusClass(power?: number, deviceId?: number): string {
+  return consumptionStatusLevel(power, deviceId)
+}
 
 function getDeviceTypeLabel(type?: string): string {
   switch (type) {
@@ -340,6 +450,11 @@ async function loadDevices() {
     ])
     devices.value = devicesData
     latestTelemetry.value = telemetryData
+    // load simulation modes
+    const modes = getAllSimulationModes()
+    for (const d of devicesData) {
+      simulationModes[d.id] = !!modes[String(d.id)]
+    }
   } catch (e: any) {
     error.value = e?.response?.data?.error || 
       'Erro ao carregar dispositivos. Verifique sua conexão.'
@@ -553,6 +668,57 @@ function closeModal() {
   selectedTelemetry.value = []
   selectedSummary.value = null
   simulatorMessage.value = ''
+}
+
+function openTapoConfig(d: Device) {
+  tapoError.value = ''
+  editingTapoDeviceId.value = d.id
+  // try to parse metadata
+  try {
+    const meta = d.metadata ? JSON.parse(d.metadata) : {}
+    const t = meta?.tapo || {}
+    tapoIp.value = t.ip || ''
+    tapoUser.value = t.username || ''
+    tapoPassword.value = t.password || ''
+  } catch (e) {
+    tapoIp.value = ''
+    tapoUser.value = ''
+    tapoPassword.value = ''
+  }
+}
+
+async function saveTapoConfig() {
+  if (editingTapoDeviceId.value === null) return
+  const id = editingTapoDeviceId.value
+  tapoError.value = ''
+  savingTapo.value = true
+  try {
+    // fetch current device to merge other metadata fields
+    const device = devices.value.find(d => d.id === id)
+    if (!device) throw new Error('device not found')
+
+    let meta: any = {}
+    try { meta = device.metadata ? JSON.parse(device.metadata) : {} } catch { meta = {} }
+    meta.tapo = { ip: tapoIp.value, username: tapoUser.value, password: tapoPassword.value }
+
+    const updated = await updateDevice(id, { metadata: JSON.stringify(meta) })
+    // update local list
+    const idx = devices.value.findIndex(d => d.id === id)
+    if (idx >= 0) devices.value[idx] = updated
+    editingTapoDeviceId.value = null
+  } catch (e: any) {
+    tapoError.value = e?.response?.data?.error || e?.message || 'Erro ao salvar credenciais'
+  } finally {
+    savingTapo.value = false
+  }
+}
+
+function cancelTapoConfig() {
+  editingTapoDeviceId.value = null
+  tapoIp.value = ''
+  tapoUser.value = ''
+  tapoPassword.value = ''
+  tapoError.value = ''
 }
 
 function clearError() {
@@ -854,5 +1020,34 @@ select.input {
 .telemetry-header {
   font-weight: 600;
   background: rgba(0, 0, 0, 0.3);
+}
+
+/* Status badge for consumption health */
+.status-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.75rem;
+}
+.status-badge.ok {
+  color: var(--ok, #1f8a3d);
+  background: rgba(31,138,61,0.08);
+  border: 1px solid rgba(31,138,61,0.12);
+}
+.status-badge.warning {
+  color: var(--warning, #b36b00);
+  background: rgba(179,107,0,0.08);
+  border: 1px solid rgba(179,107,0,0.12);
+}
+.status-badge.danger {
+  color: var(--danger, #c92a2a);
+  background: rgba(201,42,42,0.08);
+  border: 1px solid rgba(201,42,42,0.12);
+}
+.status-badge.unknown {
+  color: var(--muted, #9e9e9e);
+  background: rgba(158,158,158,0.06);
+  border: 1px solid rgba(158,158,158,0.08);
 }
 </style>
