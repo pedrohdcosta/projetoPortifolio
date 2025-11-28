@@ -260,12 +260,12 @@
         </div>
         <div class="modal-body">
           <div class="row" style="gap:12px; flex-wrap:wrap;">
-            <label class="text-muted">IP</label>
-            <input class="input" v-model="tapoIp" placeholder="192.168.1.10" />
-            <label class="text-muted">Username</label>
-            <input class="input" v-model="tapoUser" placeholder="tapo email" />
-            <label class="text-muted">Password</label>
-            <input class="input" v-model="tapoPassword" type="password" placeholder="password" />
+            <label class="text-muted" for="tapo-ip">IP</label>
+            <input id="tapo-ip" class="input" v-model="tapoIp" placeholder="192.168.1.10" />
+            <label class="text-muted" for="tapo-user">Username</label>
+            <input id="tapo-user" class="input" v-model="tapoUser" placeholder="tapo email" />
+            <label class="text-muted" for="tapo-password">Password</label>
+            <input id="tapo-password" class="input" v-model="tapoPassword" type="password" placeholder="password" />
           </div>
           <p class="text-muted small">Atenção: as credenciais são salvas em `device.metadata` como JSON. Para produção considere um armazenamento seguro.</p>
           <div style="display:flex; gap:8px; margin-top:12px;">
@@ -547,6 +547,7 @@ async function loadDeviceTelemetry(deviceId: number) {
   } catch (e: any) {
     selectedTelemetry.value = []
     selectedSummary.value = null
+    error.value = e?.response?.data?.error || 'Erro ao carregar telemetria do dispositivo.'
   } finally {
     loadingTelemetry.value = false
   }
@@ -559,8 +560,9 @@ async function changePeriod(period: 'day' | 'week' | 'month') {
   loadingTelemetry.value = true
   try {
     selectedSummary.value = await getDeviceTelemetrySummary(selectedDeviceId.value, period)
-  } catch (e) {
+  } catch (e: any) {
     selectedSummary.value = null
+    error.value = e?.response?.data?.error || 'Erro ao carregar resumo do período.'
   } finally {
     loadingTelemetry.value = false
   }
@@ -681,6 +683,7 @@ function openTapoConfig(d: Device) {
     tapoUser.value = t.username || ''
     tapoPassword.value = t.password || ''
   } catch (e) {
+    console.error('Error parsing TAPO metadata:', e)
     tapoIp.value = ''
     tapoUser.value = ''
     tapoPassword.value = ''
@@ -770,7 +773,7 @@ onMounted(() => {
 
 .badge--success {
   background: rgba(67, 160, 71, 0.2);
-  color: #43a047;
+  color: #2e7d32;
 }
 
 .badge--offline {
@@ -874,7 +877,7 @@ select.input {
 }
 
 .power-value.power-active {
-  color: #43a047;
+  color: #2e7d32;
 }
 
 .last-seen {

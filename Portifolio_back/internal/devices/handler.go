@@ -14,6 +14,10 @@ type Handler struct {
 	Repo *Repo
 }
 
+const invalidID = "invalid id"
+const NotFoundDevice = "device not found"
+const unauthorizedError = "unauthorized"
+
 // NewHandler creates a new device handler.
 func NewHandler(repo *Repo) *Handler {
 	return &Handler{Repo: repo}
@@ -35,7 +39,7 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 func (h *Handler) List(c *gin.Context) {
 	userID, ok := getUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": unauthorizedError})
 		return
 	}
 
@@ -55,7 +59,7 @@ func (h *Handler) List(c *gin.Context) {
 func (h *Handler) Get(c *gin.Context) {
 	userID, ok := getUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": unauthorizedError})
 		return
 	}
 
@@ -68,13 +72,13 @@ func (h *Handler) Get(c *gin.Context) {
 
 	device, err := h.Repo.GetByID(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "device not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": NotFoundDevice})
 		return
 	}
 
 	// Ensure user owns this device
 	if device.UserID != userID {
-		c.JSON(http.StatusNotFound, gin.H{"error": "device not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": NotFoundDevice})
 		return
 	}
 
@@ -85,7 +89,7 @@ func (h *Handler) Get(c *gin.Context) {
 func (h *Handler) Create(c *gin.Context) {
 	userID, ok := getUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": unauthorizedError})
 		return
 	}
 
@@ -118,14 +122,14 @@ func (h *Handler) Create(c *gin.Context) {
 func (h *Handler) Update(c *gin.Context) {
 	userID, ok := getUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": unauthorizedError})
 		return
 	}
 
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": invalidID})
 		return
 	}
 
@@ -143,7 +147,7 @@ func (h *Handler) Update(c *gin.Context) {
 	// Fetch updated device
 	device, err := h.Repo.GetByID(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "device not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": NotFoundDevice})
 		return
 	}
 
@@ -154,14 +158,14 @@ func (h *Handler) Update(c *gin.Context) {
 func (h *Handler) Delete(c *gin.Context) {
 	userID, ok := getUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": unauthorizedError})
 		return
 	}
 
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": invalidID})
 		return
 	}
 
@@ -177,97 +181,35 @@ func (h *Handler) Delete(c *gin.Context) {
 func (h *Handler) Toggle(c *gin.Context) {
 	userID, ok := getUserID(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": unauthorizedError})
 		return
 	}
 
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": invalidID})
 		return
 	}
 
 	// Get current device
 	device, err := h.Repo.GetByID(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "device not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": NotFoundDevice})
 		return
 	}
 
 	// Ensure user owns this device
 	if device.UserID != userID {
-		c.JSON(http.StatusNotFound, gin.H{"error": "device not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": NotFoundDevice})
 		return
 	}
 
-	// Toggle power state. If device metadata contains tapo connection info,
-	// attempt to perform the operation on the real device. Otherwise, fall back
-	// to toggling the status/power state in the database only.
+	desiredPower := getDesiredPowerState(device.PowerState)
+	connIP, connUser, connPass := parseTapoMetadata(device.Metadata)
 
-	// Determine desired power state
-	var desiredPower bool
-	if device.PowerState != nil && *device.PowerState {
-		desiredPower = false
-	} else {
-		desiredPower = true
-	}
-
-	// Try to parse metadata for tapo connection info
-	var connIP, connUser, connPass string
-	if device.Metadata != "" {
-		// metadata expected to be a JSON object containing fields like
-		// {"tapo": {"ip": "192.168.1.10", "username": "admin", "password": "pw"}}
-		var meta map[string]any
-		if err := json.Unmarshal([]byte(device.Metadata), &meta); err == nil {
-			if t, ok := meta["tapo"].(map[string]any); ok {
-				if ip, ok := t["ip"].(string); ok {
-					connIP = ip
-				}
-				if u, ok := t["username"].(string); ok {
-					connUser = u
-				}
-				if p, ok := t["password"].(string); ok {
-					connPass = p
-				}
-			}
-		}
-	}
-
-	// If we have connection info, attempt to call the tapo integration.
-	if connIP != "" && connUser != "" && connPass != "" {
-		// attempt network operation but do not fail the request entirely on error;
-		// update DB only on success.
-		conn := integrations_tapo.Connection{IP: connIP, Username: connUser, Password: connPass}
-		if err := integrations_tapo.SetPower(c.Request.Context(), conn, desiredPower); err != nil {
-			// log and return error to client
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to control physical device", "detail": err.Error()})
-			return
-		}
-
-		// Update stored power_state and last_seen/status
-		if err := h.Repo.UpdatePowerState(c.Request.Context(), id, desiredPower); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update device power state"})
-			return
-		}
-		// mark device online when successful
-		if err := h.Repo.UpdateStatus(c.Request.Context(), id, "online"); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update device status"})
-			return
-		}
-	} else {
-		// No tapo metadata — toggle status in DB only (legacy behavior)
-		var newStatus string
-		if device.Status == "online" {
-			newStatus = "offline"
-		} else {
-			newStatus = "online"
-		}
-
-		if err := h.Repo.UpdateStatus(c.Request.Context(), id, newStatus); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to toggle device status"})
-			return
-		}
+	if err := h.toggleDeviceState(c, id, device, desiredPower, connIP, connUser, connPass); err != nil {
+		return
 	}
 
 	// Fetch updated device
@@ -280,6 +222,82 @@ func (h *Handler) Toggle(c *gin.Context) {
 	c.JSON(http.StatusOK, device)
 }
 
+func getDesiredPowerState(currentPowerState *bool) bool {
+	if currentPowerState != nil && *currentPowerState {
+		return false
+	}
+	return true
+}
+
+func parseTapoMetadata(metadata string) (ip, username, password string) {
+	if metadata == "" {
+		return "", "", ""
+	}
+
+	var meta map[string]any
+	if err := json.Unmarshal([]byte(metadata), &meta); err != nil {
+		return "", "", ""
+	}
+
+	tapoData, ok := meta["tapo"].(map[string]any)
+	if !ok {
+		return "", "", ""
+	}
+
+	if ipVal, ok := tapoData["ip"].(string); ok {
+		ip = ipVal
+	}
+	if userVal, ok := tapoData["username"].(string); ok {
+		username = userVal
+	}
+	if passVal, ok := tapoData["password"].(string); ok {
+		password = passVal
+	}
+
+	return ip, username, password
+}
+
+func (h *Handler) toggleDeviceState(c *gin.Context, id int64, device *Device, desiredPower bool, connIP, connUser, connPass string) error {
+	if connIP != "" && connUser != "" && connPass != "" {
+		return h.togglePhysicalDevice(c, id, desiredPower, connIP, connUser, connPass)
+	}
+	return h.toggleDatabaseStatus(c, id, device.Status)
+}
+
+func (h *Handler) togglePhysicalDevice(c *gin.Context, id int64, desiredPower bool, connIP, connUser, connPass string) error {
+	conn := integrations_tapo.Connection{IP: connIP, Username: connUser, Password: connPass}
+	if err := integrations_tapo.SetPower(c.Request.Context(), conn, desiredPower); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to control physical device", "detail": err.Error()})
+		return err
+	}
+
+	if err := h.Repo.UpdatePowerState(c.Request.Context(), id, desiredPower); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update device power state"})
+		return err
+	}
+
+	if err := h.Repo.UpdateStatus(c.Request.Context(), id, "online"); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update device status"})
+		return err
+	}
+
+	return nil
+}
+
+func (h *Handler) toggleDatabaseStatus(c *gin.Context, id int64, currentStatus string) error {
+	newStatus := "online"
+	if currentStatus == "online" {
+		newStatus = "offline"
+	}
+
+	if err := h.Repo.UpdateStatus(c.Request.Context(), id, newStatus); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to toggle device status"})
+		return err
+	}
+
+	return nil
+}
+
 // ReadPower performs a live read of power consumption from the device if configured.
 func (h *Handler) ReadPower(c *gin.Context) {
 	userID, ok := getUserID(c)
@@ -288,43 +306,12 @@ func (h *Handler) ReadPower(c *gin.Context) {
 		return
 	}
 
-	idStr := c.Param("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
+	device, err := h.getDeviceForUser(c, userID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
 		return
 	}
 
-	// Get device
-	device, err := h.Repo.GetByID(c.Request.Context(), id)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "device not found"})
-		return
-	}
-	if device.UserID != userID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "device not found or not owned by user"})
-		return
-	}
-
-	// parse metadata for tapo
-	var connIP, connUser, connPass string
-	if device.Metadata != "" {
-		var meta map[string]any
-		if err := json.Unmarshal([]byte(device.Metadata), &meta); err == nil {
-			if t, ok := meta["tapo"].(map[string]any); ok {
-				if ip, ok := t["ip"].(string); ok {
-					connIP = ip
-				}
-				if u, ok := t["username"].(string); ok {
-					connUser = u
-				}
-				if p, ok := t["password"].(string); ok {
-					connPass = p
-				}
-			}
-		}
-	}
-
+	connIP, connUser, connPass := parseTapoMetadata(device.Metadata)
 	if connIP == "" || connUser == "" || connPass == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "device not configured for live reads"})
 		return
@@ -338,6 +325,28 @@ func (h *Handler) ReadPower(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"power": power})
+}
+
+func (h *Handler) getDeviceForUser(c *gin.Context, userID int64) (*Device, error) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": invalidID})
+		return nil, err
+	}
+
+	device, err := h.Repo.GetByID(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "device not found"})
+		return nil, err
+	}
+
+	if device.UserID != userID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "device not found or not owned by user"})
+		return nil, err
+	}
+
+	return device, nil
 }
 
 // getUserID extracts user ID from Gin context (set by auth middleware).
