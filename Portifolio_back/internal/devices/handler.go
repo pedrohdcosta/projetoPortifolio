@@ -170,7 +170,7 @@ func (h *Handler) Delete(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// Toggle switches device power state (on/off).
+// Toggle switches device status (online/offline).
 func (h *Handler) Toggle(c *gin.Context) {
 	userID, ok := getUserID(c)
 	if !ok {
@@ -198,16 +198,16 @@ func (h *Handler) Toggle(c *gin.Context) {
 		return
 	}
 
-	// Toggle power state
-	var newPowerState bool
-	if device.PowerState == nil || !*device.PowerState {
-		newPowerState = true
+	// Toggle status between online and offline
+	var newStatus string
+	if device.Status == "online" {
+		newStatus = "offline"
 	} else {
-		newPowerState = false
+		newStatus = "online"
 	}
 
-	if err := h.Repo.UpdatePowerState(c.Request.Context(), id, newPowerState); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to toggle device"})
+	if err := h.Repo.UpdateStatus(c.Request.Context(), id, newStatus); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to toggle device status"})
 		return
 	}
 

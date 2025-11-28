@@ -115,6 +115,12 @@ func (r *Repo) UpdatePowerState(ctx context.Context, deviceID int64, powerState 
 	return r.q.Exec(ctx, sql, deviceID, powerState)
 }
 
+// UpdateStatus updates the status (online/offline) of a device.
+func (r *Repo) UpdateStatus(ctx context.Context, deviceID int64, status string) error {
+	sql := `UPDATE device SET status = $2 WHERE id = $1`
+	return r.q.Exec(ctx, sql, deviceID, status)
+}
+
 // Delete removes a device by ID for a user.
 func (r *Repo) Delete(ctx context.Context, userID, deviceID int64) error {
 	sql := `DELETE FROM device WHERE id = $1 AND user_id = $2`

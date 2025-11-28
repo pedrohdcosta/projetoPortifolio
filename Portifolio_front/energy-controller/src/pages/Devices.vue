@@ -62,10 +62,7 @@
           <div class="row" style="justify-content: space-between;">
             <strong style="font-size: var(--fs-lg);">{{ d.name }}</strong>
             <div class="row" style="gap: var(--sp-2);">
-              <span :class="['badge', d.power_state ? 'badge--power-on' : 'badge--power-off']">
-                {{ d.power_state ? '⚡ Ligado' : '💤 Desligado' }}
-              </span>
-              <span :class="['badge', d.status === 'online' ? 'badge--success' : '']">
+              <span :class="['badge', d.status === 'online' ? 'badge--success' : 'badge--offline']">
                 {{ d.status === 'online' ? '🟢 Online' : '⚫ Offline' }}
               </span>
             </div>
@@ -76,17 +73,17 @@
             <span class="badge">{{ getDeviceTypeLabel(d.type) }}</span>
           </div>
 
-          <!-- Power Toggle -->
+          <!-- Status Toggle -->
           <div class="power-toggle-section">
             <button 
-              :class="['power-toggle-btn', d.power_state ? 'power-on' : 'power-off']"
+              :class="['power-toggle-btn', d.status === 'online' ? 'power-on' : 'power-off']"
               @click="toggle(d.id)"
               :disabled="toggling === d.id"
-              :title="d.power_state ? 'Desligar dispositivo' : 'Ligar dispositivo'"
+              :title="d.status === 'online' ? 'Desativar dispositivo' : 'Ativar dispositivo'"
             >
               <span v-if="toggling === d.id" class="toggle-loading">⏳</span>
-              <span v-else class="toggle-icon">{{ d.power_state ? '🔴' : '🟢' }}</span>
-              <span class="toggle-text">{{ d.power_state ? 'Desligar' : 'Ligar' }}</span>
+              <span v-else class="toggle-icon">{{ d.status === 'online' ? '🔴' : '🟢' }}</span>
+              <span class="toggle-text">{{ d.status === 'online' ? 'Desativar' : 'Ativar' }}</span>
             </button>
           </div>
 
@@ -94,7 +91,7 @@
           <div class="telemetry-info">
             <div class="telemetry-power">
               <span class="power-label">Potência Atual</span>
-              <span class="power-value" :class="{ 'power-active': d.latestPower !== undefined && d.power_state }">
+              <span class="power-value" :class="{ 'power-active': d.latestPower !== undefined && d.status === 'online' }">
                 {{ d.latestPower !== undefined ? d.latestPower.toFixed(1) : '--' }} W
               </span>
             </div>
@@ -610,12 +607,7 @@ onMounted(() => {
   color: #43a047;
 }
 
-.badge--power-on {
-  background: rgba(255, 193, 7, 0.2);
-  color: #ffc107;
-}
-
-.badge--power-off {
+.badge--offline {
   background: rgba(158, 158, 158, 0.2);
   color: #9e9e9e;
 }
