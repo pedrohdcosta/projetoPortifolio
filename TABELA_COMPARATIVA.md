@@ -459,5 +459,5 @@ func ReadPower(ctx context.Context, conn Connection) (float64, error)  ✅
 
 ---
 
-**Documento gerado:** 03/12/2025  
+**Documento gerado:** 03/12/2025 (DD/MM/YYYY - 3 de Dezembro de 2025)  
 **Próxima revisão:** Após Sprint 1 (implementação MQTT + testes)

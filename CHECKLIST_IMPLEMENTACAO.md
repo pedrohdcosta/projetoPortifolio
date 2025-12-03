@@ -681,5 +681,5 @@ jobs:
 
 ---
 
-**Última atualização:** 03/12/2025  
-**Responsável:** Análise Automatizada
+**Última atualização:** 03/12/2025 (DD/MM/YYYY - 3 de Dezembro de 2025)  
+**Responsável:** Análise Automatizada GitHub Copilot
