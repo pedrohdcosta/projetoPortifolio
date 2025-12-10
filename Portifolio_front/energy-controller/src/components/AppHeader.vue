@@ -1,6 +1,6 @@
 <template>
     <header class="h">
-        <strong>Energy IoT</strong>
+        <strong>Energy Controller</strong>
         <div class="spacer" />
         <button @click="logout">Sair</button>
     </header>
