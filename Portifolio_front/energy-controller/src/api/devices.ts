@@ -90,6 +90,12 @@ export async function toggleDevice(id: number): Promise<Device> {
   return data;
 }
 
+// Test device connection and read power (for API mode devices)
+export async function testDeviceConnection(id: number): Promise<{ power: number }> {
+  const { data } = await api.get(`/devices/${id}/read`);
+  return data;
+}
+
 // Telemetry API functions
 export async function listTelemetry(deviceId?: number, limit = 100): Promise<TelemetryData[]> {
   const params: Record<string, any> = { limit };

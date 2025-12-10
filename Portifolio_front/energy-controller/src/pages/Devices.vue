@@ -109,13 +109,24 @@
             <span class="text-muted small">ID: {{ d.id }}</span>
             <div class="row" style="gap: var(--sp-2); flex-wrap: wrap;">
               <button 
+                v-if="isSimulationEnabled(d.id)"
                 class="btn btn--outline btn--sm btn--simulate" 
                 @click="generateReading(d.id)"
-                :disabled="!isSimulationEnabled(d.id) || loading || simulating === d.id"
+                :disabled="loading || simulating === d.id"
                 title="Gerar leitura simulada"
               >
                 <span v-if="simulating === d.id">⏳</span>
                 <span v-else>⚡ Simular</span>
+              </button>
+              <button 
+                v-else
+                class="btn btn--outline btn--sm btn--connect" 
+                @click="connectToDevice(d.id)"
+                :disabled="loading || connecting === d.id"
+                title="Conectar ao dispositivo e testar credenciais"
+              >
+                <span v-if="connecting === d.id">⏳</span>
+                <span v-else>🔌 Conectar</span>
               </button>
               <button
                 class="btn btn--outline btn--sm"
@@ -294,6 +305,7 @@ import {
   getDeviceTelemetrySummary,
   simulateTelemetry,
   simulateBulkTelemetry,
+  testDeviceConnection,
   type Device,
   type TelemetryData,
   type TelemetrySummary
@@ -333,6 +345,7 @@ const generatingSingle = ref(false)
 const generatingBulk = ref(false)
 const simulatorMessage = ref('')
 const toggling = ref<number | null>(null) // deviceId being toggled
+const connecting = ref<number | null>(null) // deviceId being connected
 // TAPO config modal state
 const editingTapoDeviceId = ref<number | null>(null)
 const tapoIp = ref('')
@@ -525,6 +538,48 @@ async function toggle(deviceId: number) {
       'Erro ao alternar estado do dispositivo. Tente novamente.'
   } finally {
     toggling.value = null
+  }
+}
+
+async function connectToDevice(deviceId: number) {
+  if (connecting.value !== null) return
+  
+  connecting.value = deviceId
+  error.value = ''
+  
+  try {
+    const result = await testDeviceConnection(deviceId)
+    
+    // Update the latest telemetry for this device
+    if (result.power !== undefined) {
+      const existing = latestTelemetry.value.findIndex(t => t.device_id === deviceId)
+      const newReading: TelemetryData = {
+        id: 0,
+        device_id: deviceId,
+        power: result.power,
+        voltage: undefined,
+        current: undefined,
+        timestamp: new Date().toISOString()
+      }
+      
+      if (existing >= 0) {
+        latestTelemetry.value[existing] = newReading
+      } else {
+        latestTelemetry.value.push(newReading)
+      }
+      
+      // Update device status to online
+      const device = devices.value.find(d => d.id === deviceId)
+      if (device) {
+        device.status = 'online'
+        device.last_seen = new Date().toISOString()
+      }
+    }
+  } catch (e: any) {
+    error.value = e?.response?.data?.error || e?.response?.data?.detail ||
+      'Erro ao conectar com o dispositivo. Verifique as credenciais na configuração TAPO.'
+  } finally {
+    connecting.value = null
   }
 }
 
@@ -1001,6 +1056,15 @@ select.input {
 
 .btn--simulate:hover {
   background: rgba(0, 150, 136, 0.1);
+}
+
+.btn--connect {
+  border-color: #2196f3;
+  color: #2196f3;
+}
+
+.btn--connect:hover {
+  background: rgba(33, 150, 243, 0.1);
 }
 
 /* Telemetry List */
