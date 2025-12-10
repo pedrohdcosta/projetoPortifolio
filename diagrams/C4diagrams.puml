@@ -7,13 +7,13 @@ package "Plataforma Energia IoT" {
 }
 cloud "Broker MQTT" as MQ
 cloud "API REST Dispositivo" as REST
-database TimescaleDB
+database PostegresSQL
 
 Usuario --> Web : HTTPS\nDashboard + Comandos
 Web --> API : JSON/HTTPS
 API --> MQ : SUB/PUB
 API --> REST : GET Telemetry
-API --> TimescaleDB : SQL
+API --> PostegresSQL : SQL
 @enduml
 
 
@@ -26,17 +26,13 @@ LAYOUT_TOP_DOWN()
 System_Boundary(sys, "Plataforma Energia IoT") {
   Container(web, "Frontend PWA", "Vue 3", "Dashboard + Controle")
   Container(api, "Backend Go", "Gin", "API REST + Workers MQTT/REST")
-  ContainerDb(ts, "TimescaleDB", "DB", "Séries temporais")
-  Container(redis, "Redis", "Cache", "Sessões e métricas recentes")
+  ContainerDb(ts, "PostegresSQL", "DB", "Séries temporais")
 }
 
-System_Ext(mqtt, "Broker MQTT (EMQX)")
 System_Ext(rest, "API REST Dispositivo")
 
 Rel(user, web, "HTTPS")
 Rel(web, api, "JSON / HTTPS")
 Rel(api, ts, "JDBC")
-Rel(api, redis, "TCP")
-Rel(api, mqtt, "MQTT SUB/PUB")
 Rel(api, rest, "HTTP-GET")
 @enduml
