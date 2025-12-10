@@ -4,7 +4,6 @@
       <!-- Cabeçalho -->
       <header class="row" style="justify-content: space-between;">
         <h2 style="font-size: var(--fs-xl); font-weight: 700;">Perfil</h2>
-        <span class="badge">MVP</span>
       </header>
 
       <!-- Error State -->

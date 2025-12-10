@@ -4,7 +4,7 @@
       <header class="auth-header">
         <div class="logo-dot" />
         <h1>Criar conta</h1>
-        <p class="subtitle">Acesse recursos do Energy IoT</p>
+        <p class="subtitle">Acesse recursos do Energy Controller</p>
       </header>
 
       <form class="auth-form" @submit.prevent="onSubmit" novalidate>

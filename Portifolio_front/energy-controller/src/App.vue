@@ -4,8 +4,7 @@
     <header class="top card" v-if="isAuth">
       <div class="row">
         <div class="logo-dot" />
-        <strong>Energy IoT</strong>
-        <span class="badge">MVP</span>
+        <strong>Energy Controller</strong>
       </div>
       <div class="row">
         <span class="text-muted small">{{ auth.user?.email }}</span>
