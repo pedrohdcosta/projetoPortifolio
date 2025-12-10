@@ -266,7 +266,7 @@ func (h *Handler) toggleDeviceState(c *gin.Context, id int64, device *Device, de
 
 func (h *Handler) togglePhysicalDevice(c *gin.Context, id int64, desiredPower bool, connIP, connUser, connPass string) error {
 	// conn := integrations_tapo.Connection{IP: connIP, Username: connUser, Password: connPass}
-	connIP = "192.168.0.14"
+	connIP = "192.168.237.52"
 	connUser = "pedrohdcosta@gmail.com"
 	connPass = "gdnz8cti1"
 	conn := integrations_tapo.Connection{IP: connIP, Username: connUser, Password: connPass}
